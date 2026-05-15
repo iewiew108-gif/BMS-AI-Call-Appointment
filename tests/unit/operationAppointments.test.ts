@@ -139,14 +139,9 @@ describe('buildAppointmentSql', () => {
     expect(sql).toMatch(/LEFT\s+JOIN\s+ovst\s+ov/i);
   });
 
-  it("does NOT filter by operation_appointment by default (matches native form)", () => {
+  it("never filters by operation_appointment — lists every appointment type", () => {
     const sql = buildAppointmentSql(makeFilter());
-    expect(sql).not.toMatch(/o\.operation_appointment\s*=\s*'Y'/);
-  });
-
-  it("adds operation_appointment='Y' only when onlyOneDayCase=true", () => {
-    const sql = buildAppointmentSql(makeFilter({ onlyOneDayCase: true }));
-    expect(sql).toMatch(/o\.operation_appointment\s*=\s*'Y'/);
+    expect(sql).not.toMatch(/operation_appointment/);
   });
 
   it('keeps rows where oapp_status_id is NULL too', () => {

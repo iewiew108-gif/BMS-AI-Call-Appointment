@@ -153,12 +153,6 @@ export interface AppointmentFilter {
   hn?: string | null;
   /** Hide rows where the patient has already arrived. */
   excludeAlreadyVisited?: boolean;
-  /**
-   * Restrict to One Day Case operation appointments
-   * (`operation_appointment = 'Y'`). Default `false` to match the native
-   * HOSxPAppointmentListForm view that shows every appointment type.
-   */
-  onlyOneDayCase?: boolean;
   /** Limit the number of rows returned (defaults to 200). */
   limit?: number;
 }

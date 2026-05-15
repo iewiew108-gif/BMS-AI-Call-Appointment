@@ -168,15 +168,6 @@ export function AppointmentFilterBar({
           />
           ซ่อนคนไข้ที่มาแล้ว
         </label>
-        <label className="inline-flex items-center gap-2 text-xs text-slate-700">
-          <input
-            type="checkbox"
-            checked={Boolean(filter.onlyOneDayCase)}
-            onChange={(e) => setFilter({ onlyOneDayCase: e.target.checked })}
-            className="h-3.5 w-3.5 rounded border-slate-300"
-          />
-          เฉพาะ One Day Case
-        </label>
         <Input
           placeholder="ผู้นัด (login)"
           value={filter.appUser ?? ''}

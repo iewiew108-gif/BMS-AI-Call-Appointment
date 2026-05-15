@@ -188,10 +188,10 @@ export default function AppointmentList() {
               AI ผู้ช่วยพยาบาล • หมอพร้อม
             </div>
             <h1 className="mt-2 text-2xl font-semibold tracking-tight text-slate-900 sm:text-3xl">
-              ทะเบียนนัดผ่าตัด One Day Case — โทรยืนยัน
+              ทะเบียนนัดผู้ป่วย — โทรยืนยัน
             </h1>
             <p className="mt-1 text-sm text-slate-600">
-              ดึงรายการจาก HOSxP <span className="font-mono">oapp</span> ที่ <code>operation_appointment = &apos;Y&apos;</code> และส่งคิวให้ AI โทรผ่านหมอพร้อม
+              ดึงรายการจาก HOSxP <span className="font-mono">oapp</span> ทุกประเภทนัด และส่งคิวให้ AI โทรผ่านหมอพร้อม
             </p>
           </div>
           <div className="text-xs text-slate-500">{lastUpdate}</div>

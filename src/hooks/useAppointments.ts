@@ -132,7 +132,6 @@ export function useAppointments(initialFilter?: Partial<AppointmentFilter>): Use
       appUser: null,
       hn: null,
       excludeAlreadyVisited: false,
-      onlyOneDayCase: false,
       limit: 200,
       ...initialFilter,
     };

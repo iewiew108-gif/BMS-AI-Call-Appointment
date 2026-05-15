@@ -67,11 +67,13 @@ function clampLimit(limit: number | undefined): number {
  * Build the full SELECT for the appointment list — mirrors the column set
  * used by `HOSxPAppointmentListFormUnit`.
  *
+ * Lists **all** appointment types (no operation-only filter): the AI
+ * confirm-call workflow targets every patient on the schedule, not just
+ * One Day Case operations.
+ *
  * The clinic / doctor / appUser / hn filters are only appended when the
  * corresponding key on {@link AppointmentFilter} is non-empty so we never
- * emit unused placeholders. `onlyOneDayCase` adds the
- * `operation_appointment='Y'` clause when requested (default off — match the
- * native form which lists every type).
+ * emit unused placeholders.
  *
  * The `visit_count` subquery checks whether the patient already arrived
  * (`ovst.vstdate = oapp.nextdate`) so the UI can grey-out the row; the
@@ -84,7 +86,6 @@ export function buildAppointmentSql(filter: AppointmentFilter): string {
     '(o.oapp_status_id < 4 OR o.oapp_status_id IS NULL)',
   ];
 
-  if (filter.onlyOneDayCase) clauses.push("o.operation_appointment = 'Y'");
   if (asNullableString(filter.clinic)) clauses.push('o.clinic = :clinic');
   if (asNullableString(filter.doctor)) clauses.push('o.doctor = :doctor');
   if (asNullableString(filter.appUser)) clauses.push('o.app_user = :app_user');
