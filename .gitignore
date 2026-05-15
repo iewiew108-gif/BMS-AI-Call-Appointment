@@ -27,6 +27,15 @@ npm-debug.log*
 # Test coverage
 coverage/
 
+# OMC (oh-my-claudecode) session state — internal to the assistant tooling
+.omc/
+
+# Playwright MCP debug artifacts
+.playwright-mcp/
+
+# Browser smoke screenshots (debug only)
+appointments-smoke*.png
+
 # Temp
 *.tmp
 .vite/
