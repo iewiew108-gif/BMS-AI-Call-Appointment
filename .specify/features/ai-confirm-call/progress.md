@@ -1,6 +1,6 @@
 # AI ผู้ช่วยพยาบาล — Progress Log
 
-> **Resume-friendly.** This file is updated after every meaningful step so any new session can pick up without losing context. Open it first when continuing this feature.
+> **Resume-friendly.** Update after every meaningful step. Open this first when continuing.
 
 ---
 
@@ -14,117 +14,106 @@
 4. รับ callback (status / transcript / events) แบบ SSE จาก medai-screen
 5. แสดงผลใน Detail Drawer คล้าย medai-screen (workflow / clinical state / doctor plan / transcript / events)
 
-**Reference docs:**
-- `docs/top_level_overview.docx` — ภาพรวมระบบ
-- `docs/top_level_architecture.docx` — 4 Layer Architecture
-- `docs/BMS-SESSION-FOR-DEV.md` — BMS Session API spec
-- `.specify/memory/constitution.md` — TDD-non-negotiable + 4 test layers + 80% coverage
-- Visual reference: `https://medai-screen.bmscloud.in.th/aidx` (BMS AIDX Assistant)
-
 ---
 
 ## ⚙️ Resume Commands
 
-จะใช้คำสั่งพวกนี้บ่อยมาก — copy-paste ได้เลย:
-
 ```bash
-# ดูสถานะปัจจุบัน
+# สถานะปัจจุบัน
 cat .specify/features/ai-confirm-call/progress.md
 
-# Type-check (constitution บังคับให้ผ่านก่อน commit / push)
+# Typecheck (ต้อง clean)
 npx tsc -b
 
-# รัน test สำหรับ feature นี้เท่านั้น
-npx vitest run tests/unit/operationAppointments.test.ts
+# Tests
+npx vitest run tests/unit/operationAppointments.test.ts   # 26 tests
+npx vitest run tests/unit/callAttempts.test.ts            # 15 tests
+npx vitest run tests/unit/aidx.test.ts                    # 14 tests
+npm test                                                  # all 415 tests
 
-# รัน test ครอบคลุมทั้งโปรเจกต์
-npm test
-
-# Coverage report (constitution บังคับ ≥ 80%)
+# Coverage
 npm run test:coverage
 
-# Dev server (background)
-npm run dev          # → http://localhost:5173
+# Dev server
+npm run dev   # → http://localhost:5173/appointments
 
-# Lint
-npm run lint
-
-# Build (ทำ tsc -b + vite build)
+# Build
 npm run build
 
-# Git: ดู commits ของ feature นี้
-git log --oneline -- src/services/operationAppointments.ts src/types/appointment.ts src/pages/AppointmentList.tsx
+# Git log of feature commits
+git log --oneline --grep="confirm-call\|operationAppointments\|callAttempts\|aidx\|appointment list"
 ```
 
 ---
 
-## ✅ Done
+## ✅ Done — Feature MVP shipped
 
-ทำเสร็จแล้วและ commit แล้ว — ตามลำดับ:
+| # | Step | Files | Tests |
+|---|---|---|---|
+| 1 | Design phase | wireframe + column spec + status taxonomy + SQL from KB | — |
+| 2 | Types | `src/types/appointment.ts` | — |
+| 3 | SQL service | `src/services/operationAppointments.ts` | 26 |
+| 4 | Local store | `src/services/callAttempts.ts` + snapshot cache | 15 |
+| 5 | AIDX integration | `src/services/aidx.ts` (enqueue / status / SSE / MorPhrom) | 14 |
+| 6 | Hook | `src/hooks/useAppointments.ts` | (covered via page) |
+| 7 | UI components | `src/components/appointments/*` (7 files) | — |
+| 8 | Page + Route | `src/pages/AppointmentList.tsx`, `src/App.tsx`, `AppHeader.tsx` | — |
+| 9 | Browser smoke | Playwright screenshot at `appointments-smoke-v2.png` | passed |
 
-- [x] **Design phase** — wireframe + column spec + status taxonomy + SQL จาก HOSxP KB → user approved
-- [x] **Types** — `src/types/appointment.ts` (Appointment, CallStatus, CallAttempt, AppointmentFilter, AppointmentKpis, BestContact)
-- [x] **Failing tests** — `tests/unit/operationAppointments.test.ts` (~30 cases: SQL shape, params, parse, fallback, list end-to-end)
+**Status:**
+- ✅ `npx tsc -b` clean
+- ✅ All 415 tests pass (was 360 before feature → +55 new tests for feature)
+- ✅ Page renders end-to-end in the browser
+- ✅ React `useSyncExternalStore` infinite-loop fixed
+- ⚠️ The page expects a valid BMS session — without one, it shows the "Session unauthorized" error banner (intentional UX, not a bug)
 
 ---
 
-## ⏭️ Next (in order)
+## ⏭️ Follow-ups (out of MVP scope)
 
-1. **Implement `src/services/operationAppointments.ts`** เพื่อทำให้ tests pass
-   - exports: `buildAppointmentSql`, `buildAppointmentParams`, `parseAppointmentRow`, `bestContactFor`, `listOneDayCaseAppointments`
-   - ใช้ `executeSqlViaApiQueued` จาก `bmsSession.ts`
-   - Run: `npx vitest run tests/unit/operationAppointments.test.ts` → ต้อง green ทั้งหมด
-   - Then: `npx tsc -b` → ต้อง 0 errors
-
-2. **Call-attempt store** (`src/services/callAttempts.ts` + tests)
-   - in-memory + `localStorage` keyed by `oappId`
-   - exports: `getCallAttempt`, `upsertCallAttempt`, `subscribeCallAttempts`
-
-3. **aidx integration** (`src/services/aidx.ts` + tests)
-   - `enqueueConfirmCall(appointment, options)` → POST `medai-screen-api.bmscloud.in.th/...`
-   - `sendMorPhromInvite(appointment, link)` → wraps `sendMophNotification` from `moph.ts`
-   - `subscribeCaseEvents(caseId, cb)` → SSE via `EventSource`
-
-4. **Hook** `src/hooks/useAppointments.ts`
-   - filter state + query (use `useQuery`) + merged with `callAttempts` store
-
-5. **UI components** `src/components/appointments/*`
-   - `AppointmentFilterBar`, `AppointmentKpiCards`, `AppointmentTable`, `AppointmentStatusBadge`, `AppointmentRowActions`, `AppointmentDetailDrawer`, `CallTimeline`, `CallTranscriptViewer`, `BulkCallQueueDialog`
-
-6. **Route + Page** `src/pages/AppointmentList.tsx` + add route in `src/App.tsx`
-   - Add nav link in `src/components/layout/AppHeader.tsx`
-
-7. **Browser smoke** — start dev server, navigate `/appointments`, screenshot
-
-8. **Final verification** — `npx tsc -b` clean, `npm test` green, `npm run test:coverage` ≥ 80%
+1. **Transcript / SSE wiring inside the drawer** — `subscribeCaseEvents` exists but the drawer doesn't subscribe yet. Add a `useCaseEvents(caseId)` hook to render the live transcript inside the drawer.
+2. **Marketplace token requirement check** — `/api/sql` GETs work with JWT, but enqueueing writes audit rows in the future will need a marketplace token. Surface a warning if missing.
+3. **MorPhrom service id** — currently hard-coded `bms-aidx-confirm`. Wire it through `sys_var` (HOSxP) or env config.
+4. **Confirm/cancel write-back to HOSxP `oapp`** — when nurse confirms, write `note` back via `/api/rest/oapp`. Requires marketplace token READWRITE.
+5. **Drawer enhancements** — add Working Diagnosis / Doctor Plan / Rx state sections (mirrors medai-screen layout).
+6. **Add component tests** — currently the components only run via the smoke test. Add focused unit tests for `AppointmentTable` (selection logic) and `AppointmentDetailDrawer` (manual override).
+7. **Coverage gate** — `npm run test:coverage` should be wired into CI with ≥80% threshold (constitution requires).
 
 ---
 
 ## 🧭 Key Decisions / Context
 
-- **Call channel = หมอพร้อม (MOPH MorPhrom)** — *not* PSTN/SIP. Patient sees the AI call as a LINE Flex message inside the MorPhrom app, opens it, and is taken to medai-screen for the conversation. Identifier is **CID (13 digits)**, not phone.
-- **Repo scope** = Layer 1 (Data Integration) + Layer 4 (Application UI) of the 4-layer architecture. Layers 2 (Telephony) + 3 (AI Engine) live in `medai-screen.bmscloud.in.th`.
+- **Call channel = หมอพร้อม (MOPH MorPhrom)** — *not* PSTN/SIP. Patient sees a LINE Flex card inside MorPhrom, opens it, lands at medai-screen for the conversation. **CID (13 digits)** is the primary identifier, not phone.
+- **Repo scope** = Layer 1 (Data Integration) + Layer 4 (Application UI). Layers 2 (Telephony) + 3 (AI Engine) live in `medai-screen.bmscloud.in.th`.
 - **HOSxP table** = `oapp` filtered by `operation_appointment='Y'` and `oapp_status_id < 4`.
-- **Phone columns** are for display only (so the nurse can still call manually if MorPhrom fails). Fallback chain: `mobile_phone_number` → `home_phone_number` → `informtel`.
-- **Status taxonomy** lives in app DB only (8 states: pending / queued / calling / confirmed / rescheduled / cancelled / no_answer / escalated). Native `oapp_status_id` is shown but not overwritten.
-- **Visual style** = match medai-screen — minimalist clinical, neutral palette, card-based vertical sections, Thai status badges, SSE-driven event feed in the drawer.
+- **Phone columns** are display-only for manual fallback. Fallback chain: `mobile_phone_number` → `home_phone_number` → `informtel`.
+- **Status taxonomy** lives in app DB only (8 states: pending / queued / calling / confirmed / rescheduled / cancelled / no_answer / escalated / already_visited). Native `oapp_status_id` is shown but not overwritten.
+- **Visual style** = medai-screen — minimalist clinical, neutral palette, card-based vertical sections, Thai status badges, SSE-driven event feed.
 
 ---
 
-## 📂 Files Touched / Planned
+## 📂 Files Touched
 
-| Path | Status | Tests |
-|---|---|---|
-| `src/types/appointment.ts` | ✅ done | (typed only) |
-| `tests/unit/operationAppointments.test.ts` | ✅ done (red) | — |
-| `src/services/operationAppointments.ts` | ⏳ next | covered |
-| `src/services/callAttempts.ts` | ⏳ planned | needed |
-| `src/services/aidx.ts` | ⏳ planned | needed |
-| `src/hooks/useAppointments.ts` | ⏳ planned | needed |
-| `src/components/appointments/*` | ⏳ planned | component tests |
-| `src/pages/AppointmentList.tsx` | ⏳ planned | integration test |
-| `src/App.tsx` + `AppHeader.tsx` | ⏳ planned | — |
-| `.specify/features/ai-confirm-call/progress.md` | ✅ this file | — |
+| Path | Status |
+|---|---|
+| `src/types/appointment.ts` | ✅ created |
+| `src/services/operationAppointments.ts` | ✅ created |
+| `src/services/callAttempts.ts` | ✅ created (+ snapshot cache fix) |
+| `src/services/aidx.ts` | ✅ created |
+| `src/hooks/useAppointments.ts` | ✅ created |
+| `src/components/appointments/AppointmentStatusBadge.tsx` | ✅ created |
+| `src/components/appointments/AppointmentKpiCards.tsx` | ✅ created |
+| `src/components/appointments/AppointmentFilterBar.tsx` | ✅ created |
+| `src/components/appointments/AppointmentTable.tsx` | ✅ created |
+| `src/components/appointments/AppointmentDetailDrawer.tsx` | ✅ created |
+| `src/components/appointments/BulkCallQueueDialog.tsx` | ✅ created |
+| `src/pages/AppointmentList.tsx` | ✅ created |
+| `src/App.tsx` | ✅ added `/appointments` route |
+| `src/components/layout/AppHeader.tsx` | ✅ added nav link |
+| `tests/unit/operationAppointments.test.ts` | ✅ 26 tests |
+| `tests/unit/callAttempts.test.ts` | ✅ 15 tests |
+| `tests/unit/aidx.test.ts` | ✅ 14 tests |
+| `.specify/features/ai-confirm-call/progress.md` | ✅ this file |
 
 ---
 

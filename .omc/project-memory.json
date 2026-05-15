@@ -47,8 +47,8 @@
     "runtime": null
   },
   "build": {
-    "buildCommand": "npx tsc -b 2>&1 | tail -30",
-    "testCommand": "npx vitest run tests/unit/callAttempts.test.ts 2>&1 | tail -10",
+    "buildCommand": "npx tsc -b 2>&1 | tail -5; echo \"===\"; npm test 2>&1 | tail -8",
+    "testCommand": "npx tsc -b 2>&1 | tail -5; echo \"===\"; npm test 2>&1 | tail -8",
     "lintCommand": "npm run lint",
     "devCommand": "npm run dev",
     "scripts": {
@@ -217,6 +217,12 @@
       "type": "file"
     },
     {
+      "path": ".specify/features/ai-confirm-call/progress.md",
+      "accessCount": 2,
+      "lastAccessed": 1778836233486,
+      "type": "file"
+    },
+    {
       "path": "package.json",
       "accessCount": 1,
       "lastAccessed": 1778832702185,
@@ -292,12 +298,6 @@
       "path": "tests/unit/operationAppointments.test.ts",
       "accessCount": 1,
       "lastAccessed": 1778834260245,
-      "type": "file"
-    },
-    {
-      "path": ".specify/features/ai-confirm-call/progress.md",
-      "accessCount": 1,
-      "lastAccessed": 1778834365043,
       "type": "file"
     },
     {
