@@ -64,45 +64,75 @@ function clampLimit(limit: number | undefined): number {
 // ---------------------------------------------------------------------------
 
 /**
- * Build the full SELECT for the One Day Case appointment list. The clinic /
- * doctor / hn filters are only appended when the corresponding key on
- * {@link AppointmentFilter} is non-empty — that way `buildAppointmentParams`
- * doesn't have to emit unused placeholders.
+ * Build the full SELECT for the appointment list — mirrors the column set
+ * used by `HOSxPAppointmentListFormUnit`.
+ *
+ * The clinic / doctor / appUser / hn filters are only appended when the
+ * corresponding key on {@link AppointmentFilter} is non-empty so we never
+ * emit unused placeholders. `onlyOneDayCase` adds the
+ * `operation_appointment='Y'` clause when requested (default off — match the
+ * native form which lists every type).
  *
  * The `visit_count` subquery checks whether the patient already arrived
- * (`ovst.vstdate = oapp.nextdate`) so the UI can grey-out the row.
+ * (`ovst.vstdate = oapp.nextdate`) so the UI can grey-out the row; the
+ * `visit_status` column reflects the same idea via the explicit `visit_vn`
+ * link (matches HOSxP's example query).
  */
 export function buildAppointmentSql(filter: AppointmentFilter): string {
   const clauses: string[] = [
     'o.nextdate BETWEEN :start_date AND :end_date',
-    "o.operation_appointment = 'Y'",
-    'o.oapp_status_id < 4',
+    '(o.oapp_status_id < 4 OR o.oapp_status_id IS NULL)',
   ];
 
+  if (filter.onlyOneDayCase) clauses.push("o.operation_appointment = 'Y'");
   if (asNullableString(filter.clinic)) clauses.push('o.clinic = :clinic');
   if (asNullableString(filter.doctor)) clauses.push('o.doctor = :doctor');
+  if (asNullableString(filter.appUser)) clauses.push('o.app_user = :app_user');
   if (asNullableString(filter.hn)) clauses.push('o.hn = :hn');
 
   const limit = clampLimit(filter.limit);
 
   return `
 SELECT
-  o.oapp_id, o.hn, o.vn,
-  o.nextdate, o.nexttime, o.nexttime_end,
+  o.oapp_id, o.hos_guid, o.hn, o.vn,
+  o.vstdate, o.nextdate, o.nexttime, o.nexttime_end,
   o.clinic, c.name AS clinic_name,
   o.doctor, d.name AS doctor_name,
-  o.depcode, k.department AS dep_name,
+  o.depcode, k.department AS dep_name, o.spclty,
   CONCAT(COALESCE(p.pname,''), COALESCE(p.fname,''), ' ', COALESCE(p.lname,'')) AS patient_name,
   p.cid, p.sex, p.birthday,
   p.mobile_phone_number, p.home_phone_number, p.informtel,
   o.app_cause, o.note, o.operation_note,
-  o.oapp_status_id,
+  o.app_user, o3.name AS app_user_name,
+  o.oapp_status_id, o2.oapp_status_name,
+  CAST(CONCAT(
+    COALESCE(p.addrpart,''), ' หมู่ ', COALESCE(p.moopart,''),
+    IF(LENGTH(p.road)>0, CONCAT(' ถนน', p.road), ''),
+    ' ', COALESCE(t.full_name,'')
+  ) AS CHAR(200)) AS addr_name,
+  qs.queue_slot_number,
+  r1.referin_number,
+  CAST(o.lab_list_text  AS CHAR(1000)) AS lab_list_text,
+  CAST(o.xray_list_text AS CHAR(1000)) AS xray_list_text,
+  om.rt_send_status AS mp_send_status,
+  om.confirm_datetime AS mp_confirm_datetime,
+  COALESCE(ov.vn, 'ยังไม่ส่งตรวจ') AS visit_status,
   (SELECT COUNT(*) FROM ovst v WHERE v.hn = o.hn AND v.vstdate = o.nextdate) AS visit_count
 FROM oapp o
-LEFT JOIN patient        p ON p.hn      = o.hn
-LEFT JOIN clinic         c ON c.clinic  = o.clinic
-LEFT JOIN doctor         d ON d.code    = o.doctor
-LEFT JOIN kskdepartment  k ON k.depcode = o.depcode
+LEFT JOIN patient            p  ON p.hn       = o.hn
+LEFT JOIN clinic             c  ON c.clinic   = o.clinic
+LEFT JOIN thaiaddress        t  ON t.chwpart  = p.chwpart
+                               AND t.amppart  = p.amppart
+                               AND t.tmbpart  = p.tmbpart
+                               AND t.codetype = '3'
+LEFT JOIN doctor             d  ON d.code     = o.doctor
+LEFT JOIN kskdepartment      k  ON k.depcode  = o.depcode
+LEFT JOIN oapp_status        o2 ON o2.oapp_status_id = o.oapp_status_id
+LEFT JOIN opduser            o3 ON o3.loginname      = o.app_user
+LEFT JOIN opd_qs_slot        qs ON qs.opd_qs_slot_id = o.opd_qs_slot_id
+LEFT JOIN referin            r1 ON r1.vn       = o.referin_vn
+LEFT JOIN oapp_message_send  om ON om.oapp_id  = o.oapp_id
+LEFT JOIN ovst               ov ON ov.vn       = o.visit_vn
 WHERE ${clauses.join('\n  AND ')}
 ORDER BY o.nextdate, o.nexttime
 LIMIT ${limit}
@@ -125,6 +155,9 @@ export function buildAppointmentParams(filter: AppointmentFilter): SqlParams {
 
   const doctor = asNullableString(filter.doctor);
   if (doctor) params.doctor = { value: doctor, value_type: 'string' };
+
+  const appUser = asNullableString(filter.appUser);
+  if (appUser) params.app_user = { value: appUser, value_type: 'string' };
 
   const hn = asNullableString(filter.hn);
   if (hn) params.hn = { value: hn, value_type: 'string' };
@@ -173,7 +206,23 @@ export function parseAppointmentRow(row: Record<string, unknown>): Appointment {
     operationNote: asNullableString(row.operation_note),
 
     oappStatusId: row.oapp_status_id == null ? null : asNumber(row.oapp_status_id),
+    oappStatusName: asNullableString(row.oapp_status_name),
     visitCount: asNumber(row.visit_count),
+
+    // HOSxPAppointmentListForm parity
+    hosGuid: asNullableString(row.hos_guid),
+    vstDate: asNullableString(row.vstdate),
+    spclty: asNullableString(row.spclty),
+    appUser: asNullableString(row.app_user),
+    appUserName: asNullableString(row.app_user_name),
+    addrName: asNullableString(row.addr_name),
+    queueSlotNumber: asNullableString(row.queue_slot_number),
+    referinNumber: asNullableString(row.referin_number),
+    labListText: asNullableString(row.lab_list_text),
+    xrayListText: asNullableString(row.xray_list_text),
+    mpSendStatus: asNullableString(row.mp_send_status),
+    mpConfirmDatetime: asNullableString(row.mp_confirm_datetime),
+    visitStatus: asNullableString(row.visit_status) ?? 'ยังไม่ส่งตรวจ',
   };
 }
 

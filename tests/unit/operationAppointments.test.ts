@@ -54,8 +54,10 @@ function makeSqlOk(rows: Record<string, unknown>[]): SqlApiResponse {
 
 const SAMPLE_ROW = {
   oapp_id: 12345,
+  hos_guid: '{ABC-123}',
   hn: '0000123',
   vn: '6705150001',
+  vstdate: '2026-04-01',
   nextdate: '2026-05-16',
   nexttime: '09:00:00',
   nexttime_end: '09:30:00',
@@ -65,6 +67,7 @@ const SAMPLE_ROW = {
   doctor_name: 'นพ.สมชาย ใจดี',
   depcode: 'S01',
   dep_name: 'ศัลยกรรมทั่วไป',
+  spclty: '01',
   patient_name: 'นายมานะ เก่งกาจ',
   cid: '1234567890123',
   sex: '1',
@@ -75,7 +78,18 @@ const SAMPLE_ROW = {
   app_cause: 'ส่องกล้องลำไส้ใหญ่',
   note: 'งดน้ำงดอาหาร 6 ชม.',
   operation_note: 'Colonoscopy + Biopsy',
+  app_user: 'nurse01',
+  app_user_name: 'พยาบาลสมศรี',
   oapp_status_id: 1,
+  oapp_status_name: 'รอยืนยัน',
+  addr_name: '99 หมู่ 2 ถนนสุขุมวิท ต.บางจาก อ.พระโขนง จ.กรุงเทพ',
+  queue_slot_number: 'A-12',
+  referin_number: 'REF-001',
+  lab_list_text: 'CBC, FBS, Creatinine',
+  xray_list_text: 'CXR PA',
+  mp_send_status: 'sent',
+  mp_confirm_datetime: '2026-05-14 18:32:00',
+  visit_status: 'ยังไม่ส่งตรวจ',
   visit_count: 0,
 };
 
@@ -109,23 +123,35 @@ function mockSqlResponse(rows: Record<string, unknown>[]) {
 // ---------------------------------------------------------------------------
 
 describe('buildAppointmentSql', () => {
-  it('selects the oapp / patient / clinic / doctor join with placeholders', () => {
+  it('selects the oapp join with every HOSxPAppointmentListForm lookup table', () => {
     const sql = buildAppointmentSql(makeFilter());
     expect(sql).toMatch(/FROM\s+oapp\s+o/i);
     expect(sql).toMatch(/LEFT\s+JOIN\s+patient\s+p/i);
     expect(sql).toMatch(/LEFT\s+JOIN\s+clinic\s+c/i);
+    expect(sql).toMatch(/LEFT\s+JOIN\s+thaiaddress\s+t/i);
     expect(sql).toMatch(/LEFT\s+JOIN\s+doctor\s+d/i);
     expect(sql).toMatch(/LEFT\s+JOIN\s+kskdepartment\s+k/i);
+    expect(sql).toMatch(/LEFT\s+JOIN\s+oapp_status\s+o2/i);
+    expect(sql).toMatch(/LEFT\s+JOIN\s+opduser\s+o3/i);
+    expect(sql).toMatch(/LEFT\s+JOIN\s+opd_qs_slot\s+qs/i);
+    expect(sql).toMatch(/LEFT\s+JOIN\s+referin\s+r1/i);
+    expect(sql).toMatch(/LEFT\s+JOIN\s+oapp_message_send\s+om/i);
+    expect(sql).toMatch(/LEFT\s+JOIN\s+ovst\s+ov/i);
   });
 
-  it("filters to One Day Case via operation_appointment = 'Y'", () => {
+  it("does NOT filter by operation_appointment by default (matches native form)", () => {
     const sql = buildAppointmentSql(makeFilter());
+    expect(sql).not.toMatch(/o\.operation_appointment\s*=\s*'Y'/);
+  });
+
+  it("adds operation_appointment='Y' only when onlyOneDayCase=true", () => {
+    const sql = buildAppointmentSql(makeFilter({ onlyOneDayCase: true }));
     expect(sql).toMatch(/o\.operation_appointment\s*=\s*'Y'/);
   });
 
-  it('filters to non-terminal appointments via oapp_status_id < 4', () => {
+  it('keeps rows where oapp_status_id is NULL too', () => {
     const sql = buildAppointmentSql(makeFilter());
-    expect(sql).toMatch(/o\.oapp_status_id\s*<\s*4/);
+    expect(sql).toMatch(/o\.oapp_status_id\s*<\s*4\s*OR\s*o\.oapp_status_id\s+IS\s+NULL/i);
   });
 
   it('binds date range with :start_date / :end_date placeholders', () => {
@@ -165,6 +191,26 @@ describe('buildAppointmentSql', () => {
     expect(buildAppointmentSql(makeFilter({ doctor: 'D01' }))).toContain(':doctor');
     expect(buildAppointmentSql(makeFilter({ doctor: null }))).not.toContain(':doctor');
   });
+
+  it('adds an app_user clause only when appUser filter is set', () => {
+    expect(buildAppointmentSql(makeFilter({ appUser: 'nurse01' }))).toContain(':app_user');
+    expect(buildAppointmentSql(makeFilter({ appUser: null }))).not.toContain(':app_user');
+  });
+
+  it('selects the HOSxPAppointmentListForm visible columns', () => {
+    const sql = buildAppointmentSql(makeFilter());
+    expect(sql).toContain('o.hos_guid');
+    expect(sql).toContain('o.vstdate');
+    expect(sql).toContain('o2.oapp_status_name');
+    expect(sql).toContain('o3.name AS app_user_name');
+    expect(sql).toContain('qs.queue_slot_number');
+    expect(sql).toContain('r1.referin_number');
+    expect(sql).toContain('lab_list_text');
+    expect(sql).toContain('xray_list_text');
+    expect(sql).toContain('om.rt_send_status AS mp_send_status');
+    expect(sql).toContain('om.confirm_datetime AS mp_confirm_datetime');
+    expect(sql).toContain("COALESCE(ov.vn, 'ยังไม่ส่งตรวจ') AS visit_status");
+  });
 });
 
 describe('buildAppointmentParams', () => {
@@ -176,15 +222,17 @@ describe('buildAppointmentParams', () => {
 
   it('includes optional filters only when set', () => {
     const all = buildAppointmentParams(
-      makeFilter({ clinic: '001', doctor: 'D01', hn: '0000123' }),
+      makeFilter({ clinic: '001', doctor: 'D01', appUser: 'nurse01', hn: '0000123' }),
     );
     expect(all.clinic).toEqual({ value: '001', value_type: 'string' });
     expect(all.doctor).toEqual({ value: 'D01', value_type: 'string' });
+    expect(all.app_user).toEqual({ value: 'nurse01', value_type: 'string' });
     expect(all.hn).toEqual({ value: '0000123', value_type: 'string' });
 
     const minimal = buildAppointmentParams(makeFilter());
     expect(minimal.clinic).toBeUndefined();
     expect(minimal.doctor).toBeUndefined();
+    expect(minimal.app_user).toBeUndefined();
     expect(minimal.hn).toBeUndefined();
   });
 });
@@ -213,6 +261,34 @@ describe('parseAppointmentRow', () => {
     expect(out.operationNote).toBe('Colonoscopy + Biopsy');
     expect(out.oappStatusId).toBe(1);
     expect(out.visitCount).toBe(0);
+  });
+
+  it('maps the HOSxPAppointmentListForm parity fields', () => {
+    const out = parseAppointmentRow(SAMPLE_ROW);
+    expect(out.hosGuid).toBe('{ABC-123}');
+    expect(out.vstDate).toBe('2026-04-01');
+    expect(out.spclty).toBe('01');
+    expect(out.appUser).toBe('nurse01');
+    expect(out.appUserName).toBe('พยาบาลสมศรี');
+    expect(out.oappStatusName).toBe('รอยืนยัน');
+    expect(out.addrName).toContain('99 หมู่ 2');
+    expect(out.queueSlotNumber).toBe('A-12');
+    expect(out.referinNumber).toBe('REF-001');
+    expect(out.labListText).toBe('CBC, FBS, Creatinine');
+    expect(out.xrayListText).toBe('CXR PA');
+    expect(out.mpSendStatus).toBe('sent');
+    expect(out.mpConfirmDatetime).toBe('2026-05-14 18:32:00');
+    expect(out.visitStatus).toBe('ยังไม่ส่งตรวจ');
+  });
+
+  it('defaults visit_status to "ยังไม่ส่งตรวจ" when null', () => {
+    const out = parseAppointmentRow({ ...SAMPLE_ROW, visit_status: null });
+    expect(out.visitStatus).toBe('ยังไม่ส่งตรวจ');
+  });
+
+  it('keeps visit_status when the patient has been checked in', () => {
+    const out = parseAppointmentRow({ ...SAMPLE_ROW, visit_status: '6705160001' });
+    expect(out.visitStatus).toBe('6705160001');
   });
 
   it('treats empty strings, undefined, and explicit nulls as null', () => {

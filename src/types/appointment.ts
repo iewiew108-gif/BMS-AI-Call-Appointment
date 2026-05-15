@@ -57,8 +57,10 @@ export interface Appointment {
   note: string | null;
   operationNote: string | null;
 
-  /** Native `oapp.oapp_status_id` — only rows with status < 4 are listed. */
+  /** Native `oapp.oapp_status_id` — rows with `< 4` or `NULL` are listed. */
   oappStatusId: number | null;
+  /** Human-readable status from `oapp_status.oapp_status_name`. */
+  oappStatusName: string | null;
 
   /**
    * 1 = patient already arrived (an `ovst` row exists for the appointment
@@ -66,6 +68,34 @@ export interface Appointment {
    * already checked in.
    */
   visitCount: number;
+
+  // --- HOSxPAppointmentListForm parity fields -----------------------------
+  /** `oapp.hos_guid` — globally unique appointment id. */
+  hosGuid: string | null;
+  /** Visit date the appointment was created from (`oapp.vstdate`). */
+  vstDate: string | null;
+  /** Specialty code (`oapp.spclty`). */
+  spclty: string | null;
+  /** Login name of the user who entered the appointment (`oapp.app_user`). */
+  appUser: string | null;
+  /** Display name resolved via `opduser.name`. */
+  appUserName: string | null;
+  /** Composed patient address used by the legacy form. */
+  addrName: string | null;
+  /** Queue slot label from `opd_qs_slot.queue_slot_number`. */
+  queueSlotNumber: string | null;
+  /** Inbound referral number (`referin.referin_number`). */
+  referinNumber: string | null;
+  /** Free-text list of labs the patient must do before the appointment. */
+  labListText: string | null;
+  /** Free-text list of X-rays the patient must do before the appointment. */
+  xrayListText: string | null;
+  /** หมอพร้อม push status from `oapp_message_send.rt_send_status`. */
+  mpSendStatus: string | null;
+  /** When the patient confirmed via MorPhrom (`oapp_message_send.confirm_datetime`). */
+  mpConfirmDatetime: string | null;
+  /** "ยังไม่ส่งตรวจ" or the VN when the patient has been checked in. */
+  visitStatus: string;
 }
 
 /** Sentinel value the UI uses when a phone column needs explicit fallback chain. */
@@ -117,10 +147,18 @@ export interface AppointmentFilter {
   clinic?: string | null;
   /** Filter to a single doctor code, or null for all. */
   doctor?: string | null;
+  /** Login name of the user who scheduled the appointment (`oapp.app_user`). */
+  appUser?: string | null;
   /** Substring search on HN (exact match in SQL). */
   hn?: string | null;
   /** Hide rows where the patient has already arrived. */
   excludeAlreadyVisited?: boolean;
+  /**
+   * Restrict to One Day Case operation appointments
+   * (`operation_appointment = 'Y'`). Default `false` to match the native
+   * HOSxPAppointmentListForm view that shows every appointment type.
+   */
+  onlyOneDayCase?: boolean;
   /** Limit the number of rows returned (defaults to 200). */
   limit?: number;
 }

@@ -129,8 +129,10 @@ export function useAppointments(initialFilter?: Partial<AppointmentFilter>): Use
       endDate: tomorrow,
       clinic: null,
       doctor: null,
+      appUser: null,
       hn: null,
       excludeAlreadyVisited: false,
+      onlyOneDayCase: false,
       limit: 200,
       ...initialFilter,
     };

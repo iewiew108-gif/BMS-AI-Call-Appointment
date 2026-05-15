@@ -13,6 +13,10 @@ import {
   PlayCircle,
   AlertTriangle,
   MessageSquareText,
+  FlaskConical,
+  Scan,
+  MapPin,
+  CheckCircle2,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { AppointmentStatusBadge } from './AppointmentStatusBadge';
@@ -126,17 +130,84 @@ export function AppointmentDetailDrawer({
               <Field label="คลินิก" value={appointment.clinicName ?? appointment.clinic} />
               <Field label="แพทย์" value={appointment.doctorName ?? appointment.doctor} />
               <Field label="แผนก" value={appointment.depName} />
-              <Field label="สถานะ HOSxP" value={`oapp_status = ${appointment.oappStatusId ?? '—'}`} />
+              <Field
+                label="สถานะ HOSxP"
+                value={
+                  appointment.oappStatusName
+                    ? `${appointment.oappStatusName} (#${appointment.oappStatusId ?? '—'})`
+                    : `#${appointment.oappStatusId ?? '—'}`
+                }
+              />
+              <Field label="QS Slot" value={appointment.queueSlotNumber} />
+              <Field label="ผู้นัด" value={appointment.appUserName ?? appointment.appUser} />
+              <Field label="Visit เดิม" value={appointment.vstDate ? formatDate(appointment.vstDate) : null} />
+              <Field label="Referin No." value={appointment.referinNumber} />
+            </div>
+          </Section>
+
+          {/* Visit status + MorPhrom status */}
+          <Section title="สถานะการมาตรวจ / หมอพร้อม" icon={CheckCircle2}>
+            <div className="grid grid-cols-2 gap-3">
+              <Field
+                label="มาตรวจแล้วหรือยัง"
+                value={
+                  appointment.visitStatus === 'ยังไม่ส่งตรวจ' ? (
+                    <span className="text-amber-700">ยังไม่ส่งตรวจ</span>
+                  ) : (
+                    <span className="text-emerald-700">VN: {appointment.visitStatus}</span>
+                  )
+                }
+              />
+              <Field
+                label="หมอพร้อม — ส่งแล้ว"
+                value={appointment.mpSendStatus ?? 'ยังไม่ส่ง'}
+              />
+              <Field
+                label="หมอพร้อม — ยืนยันเมื่อ"
+                value={
+                  appointment.mpConfirmDatetime
+                    ? new Date(appointment.mpConfirmDatetime).toLocaleString('th-TH')
+                    : 'ยังไม่ยืนยัน'
+                }
+              />
+              <Field label="Specialty" value={appointment.spclty} />
             </div>
           </Section>
 
           {/* Operation section */}
-          <Section title="ข้อมูลผ่าตัด" icon={Stethoscope}>
+          <Section title="ข้อมูลผ่าตัด / หัตถการ" icon={Stethoscope}>
             <div className="space-y-2">
               <Field label="หัตถการ" value={appointment.operationNote ?? appointment.appCause} />
               <Field label="หมายเหตุ" value={appointment.note} />
             </div>
           </Section>
+
+          {/* Lab list */}
+          {appointment.labListText && (
+            <Section title="รายการ Lab ที่ต้องทำ" icon={FlaskConical}>
+              <p className="whitespace-pre-wrap rounded-lg border border-blue-200 bg-blue-50/60 p-3 text-sm text-blue-900">
+                {appointment.labListText}
+              </p>
+            </Section>
+          )}
+
+          {/* X-Ray list */}
+          {appointment.xrayListText && (
+            <Section title="รายการ X-Ray ที่ต้องทำ" icon={Scan}>
+              <p className="whitespace-pre-wrap rounded-lg border border-violet-200 bg-violet-50/60 p-3 text-sm text-violet-900">
+                {appointment.xrayListText}
+              </p>
+            </Section>
+          )}
+
+          {/* Address */}
+          {appointment.addrName && (
+            <Section title="ที่อยู่ผู้ป่วย" icon={MapPin}>
+              <p className="rounded-lg border border-slate-200 bg-slate-50/60 p-3 text-sm text-slate-700">
+                {appointment.addrName}
+              </p>
+            </Section>
+          )}
 
           {/* Contact section */}
           <Section title="ช่องทางติดต่อ" icon={Phone}>

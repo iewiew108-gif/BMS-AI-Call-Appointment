@@ -94,7 +94,7 @@ export function AppointmentFilterBar({
           />
         </div>
 
-        {/* Clinic + Doctor */}
+        {/* Clinic + Doctor + ผู้นัด */}
         <div className="md:col-span-2">
           <label className="text-xs text-slate-600">คลินิก (รหัส)</label>
           <Input
@@ -107,7 +107,7 @@ export function AppointmentFilterBar({
           />
         </div>
         <div className="md:col-span-2">
-          <label className="text-xs text-slate-600">แพทย์ (รหัส)</label>
+          <label className="text-xs text-slate-600">แพทย์ผู้นัด (รหัส)</label>
           <Input
             placeholder="ทั้งหมด"
             value={filter.doctor ?? ''}
@@ -168,6 +168,23 @@ export function AppointmentFilterBar({
           />
           ซ่อนคนไข้ที่มาแล้ว
         </label>
+        <label className="inline-flex items-center gap-2 text-xs text-slate-700">
+          <input
+            type="checkbox"
+            checked={Boolean(filter.onlyOneDayCase)}
+            onChange={(e) => setFilter({ onlyOneDayCase: e.target.checked })}
+            className="h-3.5 w-3.5 rounded border-slate-300"
+          />
+          เฉพาะ One Day Case
+        </label>
+        <Input
+          placeholder="ผู้นัด (login)"
+          value={filter.appUser ?? ''}
+          onChange={(e) =>
+            setFilter({ appUser: e.target.value.trim() === '' ? null : e.target.value })
+          }
+          className="h-7 w-32 text-xs"
+        />
 
         <div className="ml-auto flex items-center gap-2">
           <Button
