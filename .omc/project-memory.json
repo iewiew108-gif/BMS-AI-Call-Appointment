@@ -47,8 +47,8 @@
     "runtime": null
   },
   "build": {
-    "buildCommand": "npx tsc -b 2>&1 | tail -10",
-    "testCommand": "npx vitest run tests/unit/callAttempts.test.ts 2>&1 | tail -25",
+    "buildCommand": "npx tsc -b 2>&1 | tail -10 && echo \"===\" && npx vitest run tests/unit/aidx.test.ts 2>&1 | tail -10",
+    "testCommand": "npx tsc -b 2>&1 | tail -10 && echo \"===\" && npx vitest run tests/unit/aidx.test.ts 2>&1 | tail -10",
     "lintCommand": "npm run lint",
     "devCommand": "npm run dev",
     "scripts": {
@@ -187,6 +187,12 @@
   },
   "hotPaths": [
     {
+      "path": "tests/unit/aidx.test.ts",
+      "accessCount": 3,
+      "lastAccessed": 1778834673778,
+      "type": "file"
+    },
+    {
       "path": "package.json",
       "accessCount": 1,
       "lastAccessed": 1778832702185,
@@ -292,6 +298,12 @@
       "path": "src/services/callAttempts.ts",
       "accessCount": 1,
       "lastAccessed": 1778834499245,
+      "type": "file"
+    },
+    {
+      "path": "src/services/aidx.ts",
+      "accessCount": 1,
+      "lastAccessed": 1778834643151,
       "type": "file"
     }
   ],
