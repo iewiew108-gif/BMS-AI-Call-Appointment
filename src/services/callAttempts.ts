@@ -22,6 +22,15 @@ export const CALL_ATTEMPTS_STORAGE_KEY = 'bms.aiconfirm.callAttempts.v1';
 const store: Map<number, CallAttempt> = new Map();
 const listeners: Set<() => void> = new Set();
 
+// Snapshot cache — `useSyncExternalStore` requires the same array reference
+// when the underlying store hasn't changed, otherwise React enters an
+// infinite render loop. We invalidate this cache on every mutation.
+let snapshotCache: CallAttempt[] | null = null;
+
+function invalidateSnapshot(): void {
+  snapshotCache = null;
+}
+
 function nowIso(): string {
   return new Date().toISOString();
 }
@@ -85,9 +94,18 @@ export function getCallAttempt(oappId: number): CallAttempt | undefined {
   return store.get(oappId);
 }
 
-/** Snapshot of every stored attempt — safe to iterate in React renderers. */
+/**
+ * Snapshot of every stored attempt — safe to iterate in React renderers.
+ *
+ * Returns a stable array reference so consumers using `useSyncExternalStore`
+ * don't re-render on every poll. The cache is invalidated on every mutation
+ * via {@link invalidateSnapshot}.
+ */
 export function getAllCallAttempts(): CallAttempt[] {
-  return Array.from(store.values());
+  if (snapshotCache === null) {
+    snapshotCache = Array.from(store.values());
+  }
+  return snapshotCache;
 }
 
 /** Input shape for `upsertCallAttempt`. */
@@ -121,6 +139,7 @@ export function upsertCallAttempt(input: UpsertCallAttemptInput): CallAttempt {
   // undefined — so `attempts` becomes 1. Good.
 
   store.set(input.oappId, next);
+  invalidateSnapshot();
   persist();
   notify();
   return next;
@@ -129,6 +148,7 @@ export function upsertCallAttempt(input: UpsertCallAttemptInput): CallAttempt {
 /** Reset everything — used in tests and on "เลิกใช้ feature" workflows. */
 export function clearCallAttempts(): void {
   store.clear();
+  invalidateSnapshot();
   if (typeof localStorage !== 'undefined') {
     try {
       localStorage.removeItem(CALL_ATTEMPTS_STORAGE_KEY);
@@ -150,6 +170,7 @@ export function subscribeCallAttempts(listener: () => void): () => void {
 /** Force a re-read from localStorage — used by tests and on cross-tab sync. */
 export function reloadCallAttemptsFromStorage(): void {
   store.clear();
+  invalidateSnapshot();
   loadFromStorage();
   notify();
 }

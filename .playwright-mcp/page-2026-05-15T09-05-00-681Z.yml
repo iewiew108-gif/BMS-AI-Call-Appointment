@@ -1,0 +1,7 @@
+- generic [ref=e4]:
+  - img [ref=e6]
+  - heading "กำลังเชื่อมต่อ" [level=1] [ref=e12]
+  - paragraph [ref=e13]: ยืนยันตัวตนกับ BMS Session API...
+  - generic [ref=e14]:
+    - img [ref=e15]
+    - generic [ref=e19]: Initializing secure connection

@@ -47,8 +47,8 @@
     "runtime": null
   },
   "build": {
-    "buildCommand": "npx tsc -b 2>&1 | tail -10 && echo \"===\" && npx vitest run tests/unit/aidx.test.ts 2>&1 | tail -10",
-    "testCommand": "npx tsc -b 2>&1 | tail -10 && echo \"===\" && npx vitest run tests/unit/aidx.test.ts 2>&1 | tail -10",
+    "buildCommand": "npx tsc -b 2>&1 | tail -30",
+    "testCommand": "npx vitest run tests/unit/callAttempts.test.ts 2>&1 | tail -10",
     "lintCommand": "npm run lint",
     "devCommand": "npm run dev",
     "scripts": {
@@ -187,21 +187,39 @@
   },
   "hotPaths": [
     {
+      "path": "src/services/callAttempts.ts",
+      "accessCount": 6,
+      "lastAccessed": 1778835885378,
+      "type": "file"
+    },
+    {
       "path": "tests/unit/aidx.test.ts",
       "accessCount": 3,
       "lastAccessed": 1778834673778,
       "type": "file"
     },
     {
-      "path": "package.json",
-      "accessCount": 1,
-      "lastAccessed": 1778832702185,
+      "path": "src/hooks/useAppointments.ts",
+      "accessCount": 3,
+      "lastAccessed": 1778834809074,
+      "type": "file"
+    },
+    {
+      "path": "src/components/layout/AppHeader.tsx",
+      "accessCount": 3,
+      "lastAccessed": 1778835052078,
       "type": "file"
     },
     {
       "path": "src/App.tsx",
+      "accessCount": 2,
+      "lastAccessed": 1778835056694,
+      "type": "file"
+    },
+    {
+      "path": "package.json",
       "accessCount": 1,
-      "lastAccessed": 1778833552081,
+      "lastAccessed": 1778832702185,
       "type": "file"
     },
     {
@@ -295,15 +313,63 @@
       "type": "file"
     },
     {
-      "path": "src/services/callAttempts.ts",
-      "accessCount": 1,
-      "lastAccessed": 1778834499245,
-      "type": "file"
-    },
-    {
       "path": "src/services/aidx.ts",
       "accessCount": 1,
       "lastAccessed": 1778834643151,
+      "type": "file"
+    },
+    {
+      "path": "src/components/appointments/AppointmentStatusBadge.tsx",
+      "accessCount": 1,
+      "lastAccessed": 1778834854152,
+      "type": "file"
+    },
+    {
+      "path": "src/components/appointments/AppointmentKpiCards.tsx",
+      "accessCount": 1,
+      "lastAccessed": 1778834868244,
+      "type": "file"
+    },
+    {
+      "path": "src/components/appointments/AppointmentFilterBar.tsx",
+      "accessCount": 1,
+      "lastAccessed": 1778834893195,
+      "type": "file"
+    },
+    {
+      "path": "src/components/appointments/AppointmentTable.tsx",
+      "accessCount": 1,
+      "lastAccessed": 1778834929587,
+      "type": "file"
+    },
+    {
+      "path": "src/components/appointments/AppointmentDetailDrawer.tsx",
+      "accessCount": 1,
+      "lastAccessed": 1778834970475,
+      "type": "file"
+    },
+    {
+      "path": "src/components/appointments/BulkCallQueueDialog.tsx",
+      "accessCount": 1,
+      "lastAccessed": 1778834985543,
+      "type": "file"
+    },
+    {
+      "path": "src/pages/AppointmentList.tsx",
+      "accessCount": 1,
+      "lastAccessed": 1778835035197,
+      "type": "file"
+    },
+    {
+      "path": "appointments-smoke.png",
+      "accessCount": 1,
+      "lastAccessed": 1778835886273,
+      "type": "file"
+    },
+    {
+      "path": "appointments-smoke-v2.png",
+      "accessCount": 1,
+      "lastAccessed": 1778836122487,
       "type": "file"
     }
   ],

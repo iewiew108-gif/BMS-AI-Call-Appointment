@@ -11,6 +11,7 @@ import {
   LogOut,
   Database,
   ChevronDown,
+  PhoneCall,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 
@@ -26,6 +27,7 @@ interface NavTab {
 
 const NAV_TABS: NavTab[] = [
   { label: 'หน้าหลัก', path: '/', icon: LayoutDashboard },
+  { label: 'AI โทรยืนยันนัด', path: '/appointments', icon: PhoneCall },
 ];
 
 // ---------------------------------------------------------------------------
