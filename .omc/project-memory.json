@@ -47,8 +47,8 @@
     "runtime": null
   },
   "build": {
-    "buildCommand": "npx tsc -b 2>&1 | tail -30",
-    "testCommand": "npx vitest run tests/unit/operationAppointments.test.ts 2>&1 | tail -40",
+    "buildCommand": "npx tsc -b 2>&1 | tail -10",
+    "testCommand": "npx vitest run tests/unit/callAttempts.test.ts 2>&1 | tail -25",
     "lintCommand": "npm run lint",
     "devCommand": "npm run dev",
     "scripts": {
@@ -280,6 +280,18 @@
       "path": "src/services/operationAppointments.ts",
       "accessCount": 1,
       "lastAccessed": 1778834410842,
+      "type": "file"
+    },
+    {
+      "path": "tests/unit/callAttempts.test.ts",
+      "accessCount": 1,
+      "lastAccessed": 1778834478397,
+      "type": "file"
+    },
+    {
+      "path": "src/services/callAttempts.ts",
+      "accessCount": 1,
+      "lastAccessed": 1778834499245,
       "type": "file"
     }
   ],
