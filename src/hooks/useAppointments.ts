@@ -34,10 +34,8 @@ import type { ConnectionConfig, Session } from '@/types';
 // Filter defaults — tomorrow's One Day Cases
 // ---------------------------------------------------------------------------
 
-function tomorrowIso(): string {
-  const d = new Date();
-  d.setDate(d.getDate() + 1);
-  return formatDateISO(d);
+function todayIso(): string {
+  return formatDateISO(new Date());
 }
 
 /** A row enriched with the latest call-attempt status. */
@@ -123,10 +121,10 @@ export function useAppointments(initialFilter?: Partial<AppointmentFilter>): Use
   const config = useMemo(() => configFromSession(session), [session]);
 
   const defaultFilter = useMemo<AppointmentFilter>(() => {
-    const tomorrow = tomorrowIso();
+    const today = todayIso();
     return {
-      startDate: tomorrow,
-      endDate: tomorrow,
+      startDate: today,
+      endDate: today,
       clinic: null,
       doctor: null,
       appUser: null,

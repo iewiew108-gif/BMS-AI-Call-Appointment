@@ -102,7 +102,7 @@ SELECT
   o.depcode, k.department AS dep_name, o.spclty,
   CONCAT(COALESCE(p.pname,''), COALESCE(p.fname,''), ' ', COALESCE(p.lname,'')) AS patient_name,
   p.cid, p.sex, p.birthday,
-  p.mobile_phone_number, p.home_phone_number, p.informtel,
+  p.mobile_phone_number, p.hometel, p.informtel,
   o.app_cause, o.note, o.operation_note,
   o.app_user, o3.name AS app_user_name,
   o.oapp_status_id, o2.oapp_status_name,
@@ -199,7 +199,7 @@ export function parseAppointmentRow(row: Record<string, unknown>): Appointment {
     birthday: asNullableString(row.birthday),
 
     mobilePhone: asNullableString(row.mobile_phone_number),
-    homePhone: asNullableString(row.home_phone_number),
+    homePhone: asNullableString(row.hometel),
     informPhone: asNullableString(row.informtel),
 
     appCause: asNullableString(row.app_cause),
