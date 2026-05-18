@@ -17,11 +17,13 @@ import {
   Scan,
   MapPin,
   CheckCircle2,
+  Radio,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { AppointmentStatusBadge } from './AppointmentStatusBadge';
 import { bestContactFor } from '@/services/operationAppointments';
 import { formatDate } from '@/utils/dateUtils';
+import { useCaseEvents, type ConnectionState } from '@/hooks/useCaseEvents';
 import type { EnrichedAppointment } from '@/hooks/useAppointments';
 import type { CallStatus } from '@/types/appointment';
 
@@ -57,6 +59,15 @@ export function AppointmentDetailDrawer({
 }: AppointmentDetailDrawerProps) {
   const [reason, setReason] = useState<string>('');
   const dialogRef = useRef<HTMLDivElement>(null);
+  const transcriptEndRef = useRef<HTMLDivElement>(null);
+
+  const caseId = appointment?.callAttempt?.caseId ?? null;
+  const { transcript, aiStatus, events, connectionState, error: sseError } = useCaseEvents(caseId);
+
+  // Auto-scroll transcript to bottom when new chunks arrive
+  useEffect(() => {
+    transcriptEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [transcript]);
 
   useEffect(() => {
     if (!appointment) {
@@ -232,6 +243,20 @@ export function AppointmentDetailDrawer({
             </div>
           </Section>
 
+          {/* Live transcript — only shown when a caseId exists */}
+          {caseId && (
+            <Section title="AI Transcript (Live)" icon={Radio}>
+              <LiveTranscriptPanel
+                connectionState={connectionState}
+                aiStatus={aiStatus}
+                transcript={transcript}
+                events={events}
+                error={sseError}
+                transcriptEndRef={transcriptEndRef}
+              />
+            </Section>
+          )}
+
           {/* Call attempt section */}
           <Section title="ประวัติการโทร" icon={MessageSquareText}>
             {attempt ? (
@@ -311,6 +336,102 @@ export function AppointmentDetailDrawer({
     </div>
   );
 }
+
+// ---------------------------------------------------------------------------
+// LiveTranscriptPanel
+// ---------------------------------------------------------------------------
+
+const CONNECTION_STATE_LABEL: Record<ConnectionState, string> = {
+  idle: 'รอเชื่อมต่อ',
+  connecting: 'กำลังเชื่อมต่อ...',
+  live: 'LIVE',
+  closed: 'สิ้นสุดการโทร',
+  error: 'เชื่อมต่อล้มเหลว',
+};
+
+const CONNECTION_STATE_COLOR: Record<ConnectionState, string> = {
+  idle: 'bg-slate-400',
+  connecting: 'bg-amber-400 animate-pulse',
+  live: 'bg-emerald-500 animate-pulse',
+  closed: 'bg-slate-400',
+  error: 'bg-rose-500',
+};
+
+function LiveTranscriptPanel({
+  connectionState,
+  aiStatus,
+  transcript,
+  events,
+  error,
+  transcriptEndRef,
+}: {
+  connectionState: ConnectionState;
+  aiStatus: string | null;
+  transcript: string[];
+  events: import('@/services/aidx').CaseEvent[];
+  error: Error | null;
+  transcriptEndRef: React.RefObject<HTMLDivElement | null>;
+}) {
+  return (
+    <div className="space-y-2">
+      {/* Connection state bar */}
+      <div className="flex items-center gap-2 text-xs">
+        <span className={`h-2 w-2 rounded-full ${CONNECTION_STATE_COLOR[connectionState]}`} />
+        <span className="font-medium text-slate-700">{CONNECTION_STATE_LABEL[connectionState]}</span>
+        {aiStatus && (
+          <>
+            <span className="text-slate-400">•</span>
+            <span className="text-slate-600">สถานะ AI: {aiStatus}</span>
+          </>
+        )}
+      </div>
+
+      {/* Error */}
+      {error && (
+        <p className="rounded bg-rose-50 px-3 py-2 text-xs text-rose-700">
+          {error.message}
+        </p>
+      )}
+
+      {/* Transcript bubbles */}
+      {transcript.length > 0 ? (
+        <div className="max-h-64 overflow-y-auto rounded-lg border border-slate-200 bg-slate-50 p-3 space-y-1.5">
+          {transcript.map((chunk, i) => (
+            <p key={i} className="text-sm text-slate-800 leading-relaxed">
+              {chunk}
+            </p>
+          ))}
+          <div ref={transcriptEndRef} />
+        </div>
+      ) : (
+        <p className="text-sm text-slate-500 italic">
+          {connectionState === 'connecting' ? 'กำลังรอ transcript...' : 'ยังไม่มีข้อความ'}
+        </p>
+      )}
+
+      {/* Recent events */}
+      {events.length > 0 && (
+        <div className="space-y-1">
+          <p className="text-xs font-medium text-slate-500 uppercase tracking-wide">Events</p>
+          <div className="max-h-32 overflow-y-auto rounded border border-slate-100 bg-white divide-y divide-slate-100">
+            {events.slice(-10).map((ev, i) => (
+              <div key={i} className="flex items-center gap-2 px-2 py-1 text-xs text-slate-700">
+                <span className="font-mono text-slate-400">{ev.type}</span>
+                <span className="truncate text-slate-600">
+                  {Object.keys(ev.data).length > 0 ? JSON.stringify(ev.data) : '{}'}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Section wrapper
+// ---------------------------------------------------------------------------
 
 function Section({
   title,
