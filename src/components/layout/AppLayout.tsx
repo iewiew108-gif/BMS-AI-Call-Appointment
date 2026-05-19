@@ -37,7 +37,7 @@ export function AppLayout({ children }: AppLayoutProps) {
 
         @media (min-width: 1280px) {
           .app-main {
-            padding: 3rem 3rem;
+            padding: 2rem 1.5rem;
           }
         }
       `}</style>

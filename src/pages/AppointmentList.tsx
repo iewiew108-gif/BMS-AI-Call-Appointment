@@ -11,10 +11,12 @@ import { AppointmentFilterBar } from '@/components/appointments/AppointmentFilte
 import { AppointmentTable } from '@/components/appointments/AppointmentTable';
 import { AppointmentDetailDrawer } from '@/components/appointments/AppointmentDetailDrawer';
 import { BulkCallQueueDialog } from '@/components/appointments/BulkCallQueueDialog';
+import { JitsiCallModal, type JitsiCallSession } from '@/components/appointments/JitsiCallModal';
 import { useAppointments, type EnrichedAppointment } from '@/hooks/useAppointments';
 import { upsertCallAttempt } from '@/services/callAttempts';
 import { enqueueConfirmCall, sendMorPhromConfirmInvite } from '@/services/aidx';
 import { notifyError, notifySuccess, notifyWarning } from '@/services/notify';
+import { useBmsSessionContext } from '@/contexts/BmsSessionContext';
 import type { CallStatus } from '@/types/appointment';
 
 /**
@@ -38,10 +40,13 @@ export default function AppointmentList() {
     refetch,
   } = useAppointments();
 
+  const { session } = useBmsSessionContext();
+
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [drawerRow, setDrawerRow] = useState<EnrichedAppointment | null>(null);
   const [bulkOpen, setBulkOpen] = useState(false);
   const [isSending, setIsSending] = useState(false);
+  const [jitsiSession, setJitsiSession] = useState<JitsiCallSession | null>(null);
 
   // ------------------------------------------------------------------ select
   const toggleSelect = useCallback((id: number, selected: boolean) => {
@@ -154,6 +159,58 @@ export default function AppointmentList() {
     if (fail > 0) notifyWarning(`มี ${fail} รายการที่ส่งไม่สำเร็จ`);
   }, [selectedRows, sendOne]);
 
+  const handleVideoCall = useCallback(async (row: EnrichedAppointment) => {
+    if (!row.cid || !/^\d{13}$/.test(row.cid)) {
+      notifyWarning(`ไม่สามารถโทรได้ — ${row.patientName} ไม่มี CID ครบ 13 หลัก`);
+      return;
+    }
+    try {
+      upsertCallAttempt({ oappId: row.oappId, status: 'queued', reason: 'เริ่มวีดีโอโทร' });
+      const enqueued = await enqueueConfirmCall({
+        oappId: row.oappId,
+        cid: row.cid,
+        hn: row.hn,
+        patientName: row.patientName,
+        appointmentDate: row.nextDate,
+        appointmentTime: row.nextTime,
+        clinicName: row.clinicName,
+        doctorName: row.doctorName,
+        operationNote: row.operationNote,
+        preparationNotes: row.note,
+        contactPhone: row.mobilePhone ?? row.homePhone ?? null,
+        hospitalName: session?.userInfo?.hospitalCode
+          ? `โรงพยาบาล ${session.userInfo.hospitalCode}`
+          : 'โรงพยาบาล',
+        hospcode: session?.userInfo?.hospitalCode ?? undefined,
+      });
+
+      upsertCallAttempt({
+        oappId: row.oappId,
+        status: 'calling',
+        caseId: enqueued.caseId,
+        reason: 'วีดีโอโทรเปิดแล้ว',
+      });
+
+      if (!enqueued.joinUrl) {
+        notifyWarning('ไม่ได้รับ Jitsi URL จากระบบ — ลองใช้ AI โทรแทน');
+        return;
+      }
+
+      setJitsiSession({
+        nurseUrl: enqueued.joinUrl,
+        patientUrl: enqueued.patientJitsiUrl,
+        caseId: enqueued.caseId,
+        patientName: row.patientName,
+        hn: row.hn,
+      });
+      setDrawerRow(null);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      upsertCallAttempt({ oappId: row.oappId, status: 'escalated', reason: `วีดีโอโทรล้มเหลว: ${msg}` });
+      notifyError(`วีดีโอโทรไม่สำเร็จ: ${msg.slice(0, 120)}`);
+    }
+  }, [session]);
+
   const handleEscalate = useCallback((row: EnrichedAppointment) => {
     upsertCallAttempt({
       oappId: row.oappId,
@@ -178,7 +235,7 @@ export default function AppointmentList() {
     : 'รอข้อมูล...';
 
   return (
-    <div className="mx-auto max-w-7xl space-y-6 px-2 pb-12 sm:px-4">
+    <div className="mx-auto max-w-screen-2xl space-y-6 px-2 pb-12 sm:px-4">
       {/* Hero */}
       <header className="space-y-3">
         <div className="flex flex-wrap items-end justify-between gap-3">
@@ -260,8 +317,15 @@ export default function AppointmentList() {
         appointment={drawerRow}
         onClose={() => setDrawerRow(null)}
         onEnqueue={(row) => void handleEnqueueOne(row)}
+        onVideoCall={(row) => void handleVideoCall(row)}
         onEscalate={handleEscalate}
         onMarkStatus={handleMarkStatus}
+      />
+
+      {/* Jitsi video-call overlay */}
+      <JitsiCallModal
+        session={jitsiSession}
+        onClose={() => setJitsiSession(null)}
       />
 
       {/* Bulk dialog */}

@@ -1,17 +1,15 @@
 // =============================================================================
-// medai-screen (AIDX) integration
+// medai-screen (AIDX) integration — Dynamic Task API v1
 //
-// Outbound integrations for the AI confirm-call workflow:
-//   - enqueueConfirmCall        — POSTs a new case to the AI engine
-//   - getCaseStatus             — GETs the current case status
-//   - subscribeCaseEvents       — SSE stream of transcript / status events
-//   - sendMorPhromConfirmInvite — wraps moph.ts to deliver the LINE Flex
-//                                 invitation inside หมอพร้อม
+// Outbound integrations for the AI confirm-call workflow using the correct
+// /api/v1/dynamic-task/* endpoints:
 //
-// The AIDX API spec is still in flux, so the URL / auth are injectable via
-// the `options` arg on every call. Default base URL is
-// `medai-screen-api.bmscloud.in.th` per the visual reference at
-// `medai-screen.bmscloud.in.th/aidx`.
+//   enqueueConfirmCall    — generate task spec → start session (two-step)
+//   getCaseStatus         — GET /api/v1/dynamic-task/{reference_id}
+//   subscribeCaseEvents   — SSE  GET /api/v1/dynamic-task/{reference_id}/events
+//   sendMorPhromConfirmInvite — wraps moph.ts for LINE Flex delivery
+//
+// reference_id is caller-supplied as "oapp-{oappId}" for traceability.
 // =============================================================================
 
 import {
@@ -28,7 +26,7 @@ import type { MophSendResult } from '@/types';
 /** Default base URL for the AIDX REST + SSE API. */
 export const AIDX_API_BASE = 'https://medai-screen-api.bmscloud.in.th';
 
-/** Per-request timeout for enqueue / status fetches. */
+/** Per-request timeout for generate / start / status fetches (ms). */
 export const AIDX_TIMEOUT_MS = 30_000;
 
 // ---------------------------------------------------------------------------
@@ -48,6 +46,10 @@ export interface EnqueueConfirmCallInput {
   preparationNotes: string | null;
   contactPhone: string | null;
   preferredLang?: 'th' | 'en';
+  /** Hospital display name forwarded to MohPrompt videocall config. */
+  hospitalName?: string;
+  /** Hospital code (hospcode / hcode9) for MohPrompt. */
+  hospcode?: string;
 }
 
 export interface AidxCallOptions {
@@ -60,9 +62,15 @@ export interface AidxCallOptions {
 }
 
 export interface EnqueueConfirmCallResult {
+  /** Caller-supplied reference id ("oapp-{oappId}"). Maps to `reference_id`. */
   caseId: string;
   status: string;
+  /** Jitsi URL for the **nurse** to join and monitor the AI call. */
   joinUrl?: string;
+  /** Jitsi URL for the **patient** — embed in LINE Flex or share as link. */
+  patientJitsiUrl?: string;
+  /** SSE events URL for transcript streaming. */
+  eventsUrl?: string;
   raw: unknown;
 }
 
@@ -89,6 +97,36 @@ export interface CaseEventHandlers {
 export interface SubscribeCaseEventsOptions extends AidxCallOptions {
   /** Test injection point — defaults to the global `EventSource`. */
   EventSourceCtor?: typeof EventSource;
+}
+
+// ---------------------------------------------------------------------------
+// AIDX API response shapes (Dynamic Task)
+// ---------------------------------------------------------------------------
+
+interface DynamicTaskSpec {
+  title: string;
+  instruction: string;
+  expected_outcomes: string[];
+}
+
+interface DynamicTaskGenerateResponse {
+  task: DynamicTaskSpec;
+}
+
+interface DynamicTaskStartResponse {
+  reference_id: string;
+  session_id?: string;
+  status?: string;
+  status_url?: string;
+  events_url?: string;
+  jitsi_url?: string;
+  patient_jitsi_url?: string;
+}
+
+interface DynamicTaskStatusResponse {
+  reference_id?: string;
+  status?: string;
+  attempts?: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -124,16 +162,19 @@ async function aidxFetch(
 }
 
 // ---------------------------------------------------------------------------
-// enqueueConfirmCall
+// enqueueConfirmCall — two-step: generate → start
 // ---------------------------------------------------------------------------
 
 /**
- * Submit a new confirm-call case to the AIDX engine. The patient will then
- * receive a LINE Flex invitation via หมอพร้อม (separately via
- * {@link sendMorPhromConfirmInvite}) — opening it launches the AI call.
+ * Submit a new confirm-call session to the AIDX engine via the Dynamic Task
+ * API:
+ *   1. POST /api/v1/dynamic-task/generate — build the task spec from context
+ *   2. POST /api/v1/dynamic-task/start    — start the session
  *
- * @throws {Error} On CID validation failure, network error, or non-2xx
- *   response from the AIDX server.
+ * reference_id is set to "oapp-{oappId}" so every session is traceable back
+ * to its HOSxP appointment record.
+ *
+ * @throws {Error} On CID validation, network error, or non-2xx response.
  */
 export async function enqueueConfirmCall(
   input: EnqueueConfirmCallInput,
@@ -141,49 +182,91 @@ export async function enqueueConfirmCall(
 ): Promise<EnqueueConfirmCallResult> {
   validateMophCid(input.cid);
 
-  const body = {
-    oapp_id: input.oappId,
-    cid: input.cid,
-    hn: input.hn,
-    patient_name: input.patientName,
-    appointment_date: input.appointmentDate,
-    appointment_time: input.appointmentTime,
-    clinic_name: input.clinicName,
-    doctor_name: input.doctorName,
-    operation_note: input.operationNote,
-    preparation_notes: input.preparationNotes,
-    contact_phone: input.contactPhone,
-    preferred_lang: input.preferredLang ?? 'th',
+  const referenceId = `oapp-${input.oappId}`;
+  const locale = input.preferredLang ?? 'th';
+
+  // Step 1: Generate a task spec from the appointment context
+  const generateBody = {
+    task_prompt:
+      `ยืนยันนัดหมายผ่าตัดกับผู้ป่วย ${input.patientName} สำหรับวันที่ ${input.appointmentDate}` +
+      (input.clinicName ? ` ที่คลินิก ${input.clinicName}` : '') +
+      (input.doctorName ? ` แพทย์ ${input.doctorName}` : '') +
+      (input.operationNote ? ` รายการ: ${input.operationNote}` : ''),
+    context: {
+      oapp_id: input.oappId,
+      hn: input.hn,
+      patient_name: input.patientName,
+      appointment_date: input.appointmentDate,
+      appointment_time: input.appointmentTime,
+      clinic_name: input.clinicName,
+      doctor_name: input.doctorName,
+      operation_note: input.operationNote,
+      preparation_notes: input.preparationNotes,
+      contact_phone: input.contactPhone,
+    },
+    locale,
   };
 
-  const response = await aidxFetch(
-    '/api/cases',
-    { method: 'POST', body: JSON.stringify(body) },
+  const genResponse = await aidxFetch(
+    '/api/v1/dynamic-task/generate',
+    { method: 'POST', body: JSON.stringify(generateBody) },
     options,
   );
 
-  if (!response.ok) {
-    const text = await response.text().catch(() => '');
+  if (!genResponse.ok) {
+    const text = await genResponse.text().catch(() => '');
     throw new Error(
-      `AIDX enqueue failed (HTTP ${response.status}): ${text.slice(0, 200)}`,
+      `AIDX generate failed (HTTP ${genResponse.status}): ${text.slice(0, 200)}`,
     );
   }
 
-  const parsed = (await response.json()) as {
-    case_id?: string;
-    status?: string;
-    join_url?: string;
-  };
+  const genParsed = (await genResponse.json()) as DynamicTaskGenerateResponse;
 
-  if (!parsed.case_id) {
-    throw new Error('AIDX enqueue returned no case_id');
+  if (!genParsed.task) {
+    throw new Error('AIDX generate returned no task spec');
   }
 
+  // Step 2: Start the task session
+  const startBody = {
+    reference_id: referenceId,
+    cid: input.cid,
+    patient_id: input.hn,
+    locale,
+    task: genParsed.task,
+    videocall: {
+      provider: 'mohprompt',
+      cid: input.cid,
+      hospital: {
+        hospcode: input.hospcode ?? null,
+        hospital_name: input.hospitalName ?? 'โรงพยาบาล',
+      },
+      clinic_code: '099',
+      clinic_name: input.clinicName ?? 'telemed',
+    },
+  };
+
+  const startResponse = await aidxFetch(
+    '/api/v1/dynamic-task/start',
+    { method: 'POST', body: JSON.stringify(startBody) },
+    options,
+  );
+
+  if (!startResponse.ok) {
+    const text = await startResponse.text().catch(() => '');
+    throw new Error(
+      `AIDX start failed (HTTP ${startResponse.status}): ${text.slice(0, 200)}`,
+    );
+  }
+
+  const startParsed = (await startResponse.json()) as DynamicTaskStartResponse;
+
   return {
-    caseId: parsed.case_id,
-    status: parsed.status ?? 'queued',
-    joinUrl: parsed.join_url,
-    raw: parsed,
+    caseId: startParsed.reference_id ?? referenceId,
+    status: startParsed.status ?? 'queued',
+    joinUrl: startParsed.jitsi_url,
+    patientJitsiUrl: startParsed.patient_jitsi_url,
+    eventsUrl: startParsed.events_url,
+    raw: startParsed,
   };
 }
 
@@ -191,13 +274,13 @@ export async function enqueueConfirmCall(
 // getCaseStatus
 // ---------------------------------------------------------------------------
 
-/** GET the current status of a case the engine is working on. */
+/** GET the current status of a dynamic task by its reference_id. */
 export async function getCaseStatus(
   caseId: string,
   options?: AidxCallOptions,
 ): Promise<CaseStatusResult> {
   const response = await aidxFetch(
-    `/api/cases/${encodeURIComponent(caseId)}`,
+    `/api/v1/dynamic-task/${encodeURIComponent(caseId)}`,
     { method: 'GET' },
     options,
   );
@@ -209,13 +292,9 @@ export async function getCaseStatus(
     );
   }
 
-  const parsed = (await response.json()) as {
-    case_id?: string;
-    status?: string;
-    attempts?: number;
-  };
+  const parsed = (await response.json()) as DynamicTaskStatusResponse;
   return {
-    caseId: parsed.case_id ?? caseId,
+    caseId: parsed.reference_id ?? caseId,
     status: parsed.status ?? 'unknown',
     attempts: parsed.attempts,
     raw: parsed,
@@ -227,8 +306,8 @@ export async function getCaseStatus(
 // ---------------------------------------------------------------------------
 
 /**
- * Open an SSE stream to the case event feed. The default `EventSource`
- * constructor is used unless a test injects an alternative.
+ * Open an SSE stream to the dynamic task event feed.
+ * URL: GET /api/v1/dynamic-task/{reference_id}/events
  *
  * Returns an unsubscribe function that closes the underlying stream.
  */
@@ -238,7 +317,7 @@ export function subscribeCaseEvents(
   options?: SubscribeCaseEventsOptions,
 ): () => void {
   const base = options?.baseUrl ?? AIDX_API_BASE;
-  const url = `${base}/api/cases/${encodeURIComponent(caseId)}/events`;
+  const url = `${base}/api/v1/dynamic-task/${encodeURIComponent(caseId)}/events`;
   const Ctor = options?.EventSourceCtor ?? (globalThis as { EventSource?: typeof EventSource }).EventSource;
   if (!Ctor) {
     handlers.onError?.(new Error('EventSource is not available in this environment.'));

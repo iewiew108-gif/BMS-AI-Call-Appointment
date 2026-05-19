@@ -18,6 +18,7 @@ import {
   MapPin,
   CheckCircle2,
   Radio,
+  Video,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { AppointmentStatusBadge } from './AppointmentStatusBadge';
@@ -31,6 +32,7 @@ interface AppointmentDetailDrawerProps {
   appointment: EnrichedAppointment | null;
   onClose: () => void;
   onEnqueue: (row: EnrichedAppointment) => void;
+  onVideoCall: (row: EnrichedAppointment) => void;
   onEscalate: (row: EnrichedAppointment) => void;
   onMarkStatus: (row: EnrichedAppointment, status: CallStatus, reason?: string) => void;
 }
@@ -54,6 +56,7 @@ export function AppointmentDetailDrawer({
   appointment,
   onClose,
   onEnqueue,
+  onVideoCall,
   onEscalate,
   onMarkStatus,
 }: AppointmentDetailDrawerProps) {
@@ -314,7 +317,7 @@ export function AppointmentDetailDrawer({
         </div>
 
         {/* Footer actions */}
-        <div className="flex items-center justify-between gap-2 border-t border-slate-200 bg-slate-50 px-5 py-3">
+        <div className="flex flex-wrap items-center justify-between gap-2 border-t border-slate-200 bg-slate-50 px-5 py-3">
           <Button
             variant="outline"
             onClick={() => onEscalate(appointment)}
@@ -323,14 +326,25 @@ export function AppointmentDetailDrawer({
             <AlertTriangle className="h-4 w-4" />
             Escalate ให้พยาบาล
           </Button>
-          <Button
-            onClick={() => onEnqueue(appointment)}
-            disabled={!hasMorPhromCid || appointment.callStatus === 'already_visited'}
-            className="gap-1.5"
-          >
-            <PlayCircle className="h-4 w-4" />
-            ส่ง AI โทร (หมอพร้อม)
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              onClick={() => onVideoCall(appointment)}
+              disabled={!hasMorPhromCid || appointment.callStatus === 'already_visited'}
+              className="gap-1.5 text-emerald-700 hover:bg-emerald-50 border-emerald-300"
+            >
+              <Video className="h-4 w-4" />
+              วีดีโอโทร
+            </Button>
+            <Button
+              onClick={() => onEnqueue(appointment)}
+              disabled={!hasMorPhromCid || appointment.callStatus === 'already_visited'}
+              className="gap-1.5"
+            >
+              <PlayCircle className="h-4 w-4" />
+              ส่ง AI โทร (หมอพร้อม)
+            </Button>
+          </div>
         </div>
       </div>
     </div>
