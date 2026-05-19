@@ -104,7 +104,18 @@ SELECT
   p.cid, p.sex, p.birthday,
   p.mobile_phone_number, p.hometel, p.informtel,
   o.app_cause, o.note, o.operation_note,
-  CAST(o.perform_text AS CHAR(500)) AS perform_text,
+  (SELECT GROUP_CONCAT(DISTINCT os.operation_name ORDER BY os.operation_set_id SEPARATOR '\n')
+   FROM operation_set os
+   WHERE os.vn = o.vn OR (o.an IS NOT NULL AND o.an != '' AND os.an = o.an)
+  ) AS op_set_names,
+  (SELECT MIN(os.operation_set_date)
+   FROM operation_set os
+   WHERE os.vn = o.vn OR (o.an IS NOT NULL AND o.an != '' AND os.an = o.an)
+  ) AS op_set_date,
+  (SELECT MIN(os.operation_set_time)
+   FROM operation_set os
+   WHERE os.vn = o.vn OR (o.an IS NOT NULL AND o.an != '' AND os.an = o.an)
+  ) AS op_set_time,
   o.app_user, o3.name AS app_user_name,
   o.oapp_status_id, o2.oapp_status_name,
   CAST(CONCAT(
@@ -206,7 +217,9 @@ export function parseAppointmentRow(row: Record<string, unknown>): Appointment {
     appCause: asNullableString(row.app_cause),
     note: asNullableString(row.note),
     operationNote: asNullableString(row.operation_note),
-    performText: asNullableString(row.perform_text),
+    opSetNames: asNullableString(row.op_set_names),
+    opSetDate: asNullableString(row.op_set_date),
+    opSetTime: asNullableString(row.op_set_time),
 
     oappStatusId: row.oapp_status_id == null ? null : asNumber(row.oapp_status_id),
     oappStatusName: asNullableString(row.oapp_status_name),

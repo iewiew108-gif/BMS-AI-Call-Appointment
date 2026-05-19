@@ -194,24 +194,31 @@ export function AppointmentTable({
                         {row.operationNote ?? row.appCause ?? '—'}
                       </div>
                     </td>
-                    {/* ชื่อรายการผ่าตัด */}
+                    {/* ชื่อรายการผ่าตัด (operation_set) */}
                     <td className="min-w-[14rem] px-2 py-2">
-                      {row.performText ? (
-                        <p className="whitespace-pre-line text-xs text-slate-800 leading-relaxed line-clamp-3" title={row.performText}>
-                          {row.performText}
+                      {row.opSetNames ? (
+                        <p className="whitespace-pre-line text-xs text-slate-800 leading-relaxed line-clamp-3" title={row.opSetNames}>
+                          {row.opSetNames}
+                        </p>
+                      ) : row.operationNote ? (
+                        <p className="text-xs text-slate-500 italic line-clamp-2" title={row.operationNote}>
+                          {row.operationNote}
                         </p>
                       ) : (
                         <span className="text-xs text-slate-400">—</span>
                       )}
                     </td>
-                    {/* วัน/เวลาผ่าตัด */}
+                    {/* วัน/เวลาผ่าตัด (operation_set_date/time) */}
                     <td className="min-w-[9rem] px-2 py-2 whitespace-nowrap">
-                      <div className="font-medium text-slate-900">{formatDateShort(row.nextDate)}</div>
-                      {row.nextTime && (
-                        <div className="font-mono text-xs text-slate-600">
-                          {formatTime(row.nextTime)}
-                          {row.nextTimeEnd ? ` – ${formatTime(row.nextTimeEnd)}` : ''} น.
-                        </div>
+                      {row.opSetDate ? (
+                        <>
+                          <div className="font-medium text-slate-900">{formatDateShort(row.opSetDate)}</div>
+                          {row.opSetTime && (
+                            <div className="font-mono text-xs text-slate-600">{formatTime(row.opSetTime)} น.</div>
+                          )}
+                        </>
+                      ) : (
+                        <span className="text-xs text-slate-400">—</span>
                       )}
                     </td>
                     <td className="min-w-[10rem] px-2 py-2 text-slate-700">
