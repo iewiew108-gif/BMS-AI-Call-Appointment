@@ -94,6 +94,8 @@ export function AppointmentTable({
               <th className="px-2 py-2">เบอร์โทร</th>
               <th className="px-2 py-2">QS Slot</th>
               <th className="min-w-[16rem] px-2 py-2">คลินิก / หัตถการ</th>
+              <th className="min-w-[14rem] px-2 py-2">ชื่อรายการผ่าตัด</th>
+              <th className="min-w-[9rem] px-2 py-2">วัน/เวลาผ่าตัด</th>
               <th className="min-w-[10rem] px-2 py-2">แพทย์</th>
               <th className="px-2 py-2">สถานะนัด</th>
               <th className="px-2 py-2">สถานะโทร</th>
@@ -102,21 +104,21 @@ export function AppointmentTable({
               <th className="px-2 py-2">Lab / X-Ray</th>
               <th className="px-2 py-2">ผู้นัด</th>
               <th className="px-2 py-2">หมายเหตุ</th>
-              <th className="w-10 px-2 py-2 text-right" />
+              <th className="w-10 px-2 py-2 text-right" aria-label="รายละเอียด" />
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
             {isLoading && rows.length === 0 ? (
               Array.from({ length: 6 }).map((_, i) => (
                 <tr key={`skeleton-${i}`}>
-                  <td colSpan={18} className="px-3 py-3">
+                  <td colSpan={20} className="px-3 py-3">
                     <div className="h-8 animate-pulse rounded bg-slate-100" />
                   </td>
                 </tr>
               ))
             ) : rows.length === 0 ? (
               <tr>
-                <td colSpan={18} className="px-6 py-16 text-center text-sm text-slate-500">
+                <td colSpan={20} className="px-6 py-16 text-center text-sm text-slate-500">
                   <p className="font-medium text-slate-700">ไม่มีรายการนัดในช่วงที่เลือก</p>
                   <p className="mt-1">ลองปรับช่วงวันที่ หรือเอาเงื่อนไขออกบางอัน</p>
                 </td>
@@ -191,6 +193,26 @@ export function AppointmentTable({
                       <div className="text-xs text-slate-500 truncate max-w-[20rem]">
                         {row.operationNote ?? row.appCause ?? '—'}
                       </div>
+                    </td>
+                    {/* ชื่อรายการผ่าตัด */}
+                    <td className="min-w-[14rem] px-2 py-2">
+                      {row.performText ? (
+                        <p className="whitespace-pre-line text-xs text-slate-800 leading-relaxed line-clamp-3" title={row.performText}>
+                          {row.performText}
+                        </p>
+                      ) : (
+                        <span className="text-xs text-slate-400">—</span>
+                      )}
+                    </td>
+                    {/* วัน/เวลาผ่าตัด */}
+                    <td className="min-w-[9rem] px-2 py-2 whitespace-nowrap">
+                      <div className="font-medium text-slate-900">{formatDateShort(row.nextDate)}</div>
+                      {row.nextTime && (
+                        <div className="font-mono text-xs text-slate-600">
+                          {formatTime(row.nextTime)}
+                          {row.nextTimeEnd ? ` – ${formatTime(row.nextTimeEnd)}` : ''} น.
+                        </div>
+                      )}
                     </td>
                     <td className="min-w-[10rem] px-2 py-2 text-slate-700">
                       <div className="text-sm">{row.doctorName ?? row.doctor ?? '—'}</div>

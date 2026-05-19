@@ -104,6 +104,7 @@ SELECT
   p.cid, p.sex, p.birthday,
   p.mobile_phone_number, p.hometel, p.informtel,
   o.app_cause, o.note, o.operation_note,
+  CAST(o.perform_text AS CHAR(500)) AS perform_text,
   o.app_user, o3.name AS app_user_name,
   o.oapp_status_id, o2.oapp_status_name,
   CAST(CONCAT(
@@ -205,6 +206,7 @@ export function parseAppointmentRow(row: Record<string, unknown>): Appointment {
     appCause: asNullableString(row.app_cause),
     note: asNullableString(row.note),
     operationNote: asNullableString(row.operation_note),
+    performText: asNullableString(row.perform_text),
 
     oappStatusId: row.oapp_status_id == null ? null : asNumber(row.oapp_status_id),
     oappStatusName: asNullableString(row.oapp_status_name),

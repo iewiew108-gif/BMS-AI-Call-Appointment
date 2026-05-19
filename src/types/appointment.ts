@@ -56,6 +56,8 @@ export interface Appointment {
   appCause: string | null;
   note: string | null;
   operationNote: string | null;
+  /** Free-text operation/procedure list from `oapp.perform_text`. */
+  performText: string | null;
 
   /** Native `oapp.oapp_status_id` — rows with `< 4` or `NULL` are listed. */
   oappStatusId: number | null;
