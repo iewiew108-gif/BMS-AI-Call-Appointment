@@ -130,6 +130,7 @@ export function useAppointments(initialFilter?: Partial<AppointmentFilter>): Use
       appUser: null,
       hn: null,
       excludeAlreadyVisited: false,
+      callStatus: null,
       limit: 200,
       ...initialFilter,
     };
@@ -161,7 +162,7 @@ export function useAppointments(initialFilter?: Partial<AppointmentFilter>): Use
     const byId = new Map<number, CallAttempt>();
     for (const a of attempts) byId.set(a.oappId, a);
 
-    return (data ?? []).map((appointment) => {
+    const enriched = (data ?? []).map((appointment) => {
       const attempt = byId.get(appointment.oappId);
       return {
         ...appointment,
@@ -169,7 +170,12 @@ export function useAppointments(initialFilter?: Partial<AppointmentFilter>): Use
         callStatus: deriveCallStatus(appointment, attempt),
       };
     });
-  }, [data, attempts]);
+
+    if (filter.callStatus) {
+      return enriched.filter((r) => r.callStatus === filter.callStatus);
+    }
+    return enriched;
+  }, [data, attempts, filter.callStatus]);
 
   const kpis = useMemo(() => computeKpis(rows), [rows]);
 

@@ -8,7 +8,7 @@ import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { formatDateISO } from '@/utils/dateUtils';
-import type { AppointmentFilter } from '@/types/appointment';
+import type { AppointmentFilter, CallStatus } from '@/types/appointment';
 
 function todayIso(): string {
   return formatDateISO(new Date());
@@ -37,6 +37,25 @@ const QUICK_RANGES: QuickRangeChip[] = [
   { label: 'พรุ่งนี้',    start: tomorrowIso,  end: tomorrowIso },
   { label: '7 วัน',      start: todayIso,     end: () => daysAheadIso(6) },
   { label: '30 วัน',     start: todayIso,     end: () => daysAheadIso(29) },
+];
+
+interface CallStatusChip {
+  label: string;
+  value: CallStatus | null;
+  activeClass: string;
+}
+
+const CALL_STATUS_CHIPS: CallStatusChip[] = [
+  { label: 'ทั้งหมด',     value: null,              activeClass: 'border-slate-900 bg-slate-900 text-white' },
+  { label: 'รอโทร',       value: 'pending',         activeClass: 'border-amber-600 bg-amber-500 text-white' },
+  { label: 'อยู่ในคิว',   value: 'queued',          activeClass: 'border-sky-600 bg-sky-500 text-white' },
+  { label: 'กำลังโทร',   value: 'calling',         activeClass: 'border-blue-600 bg-blue-500 text-white' },
+  { label: 'ยืนยัน',      value: 'confirmed',       activeClass: 'border-emerald-600 bg-emerald-500 text-white' },
+  { label: 'เลื่อนนัด',   value: 'rescheduled',     activeClass: 'border-orange-600 bg-orange-500 text-white' },
+  { label: 'ยกเลิก',      value: 'cancelled',       activeClass: 'border-red-600 bg-red-500 text-white' },
+  { label: 'ไม่รับสาย',   value: 'no_answer',       activeClass: 'border-slate-500 bg-slate-500 text-white' },
+  { label: 'Escalate',    value: 'escalated',       activeClass: 'border-rose-600 bg-rose-500 text-white' },
+  { label: 'มาแล้ว',      value: 'already_visited', activeClass: 'border-teal-600 bg-teal-500 text-white' },
 ];
 
 interface AppointmentFilterBarProps {
@@ -138,13 +157,14 @@ export function AppointmentFilterBar({
         </div>
       </div>
 
-      {/* Quick chips + toggles */}
+      {/* Quick date chips */}
       <div className="mt-3 flex flex-wrap items-center gap-2">
-        <span className="text-xs text-slate-600">ลัด:</span>
+        <span className="text-xs text-slate-600">ช่วงวัน:</span>
         {QUICK_RANGES.map((c) => {
           const active = filter.startDate === c.start() && filter.endDate === c.end();
           return (
             <button
+              type="button"
               key={c.label}
               onClick={() => handleQuick(c)}
               className={cn(
@@ -158,8 +178,34 @@ export function AppointmentFilterBar({
             </button>
           );
         })}
+      </div>
 
-        <label className="ml-2 inline-flex items-center gap-2 text-xs text-slate-700">
+      {/* Call status chips */}
+      <div className="mt-2 flex flex-wrap items-center gap-2">
+        <span className="text-xs text-slate-600">สถานะโทร:</span>
+        {CALL_STATUS_CHIPS.map((c) => {
+          const active = (filter.callStatus ?? null) === c.value;
+          return (
+            <button
+              type="button"
+              key={c.label}
+              onClick={() => setFilter({ callStatus: c.value })}
+              className={cn(
+                'rounded-full border px-3 py-1 text-xs transition',
+                active
+                  ? c.activeClass
+                  : 'border-slate-300 bg-white text-slate-700 hover:bg-slate-50',
+              )}
+            >
+              {c.label}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Toggles + actions */}
+      <div className="mt-2 flex flex-wrap items-center gap-2">
+        <label className="inline-flex items-center gap-2 text-xs text-slate-700">
           <input
             type="checkbox"
             checked={Boolean(filter.excludeAlreadyVisited)}
@@ -179,6 +225,7 @@ export function AppointmentFilterBar({
 
         <div className="ml-auto flex items-center gap-2">
           <Button
+            type="button"
             size="sm"
             variant="outline"
             onClick={resetFilter}
@@ -187,6 +234,7 @@ export function AppointmentFilterBar({
             รีเซ็ต
           </Button>
           <Button
+            type="button"
             size="sm"
             onClick={onRefresh}
             disabled={isLoading}

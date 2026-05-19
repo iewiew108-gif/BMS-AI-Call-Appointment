@@ -153,6 +153,8 @@ export interface AppointmentFilter {
   hn?: string | null;
   /** Hide rows where the patient has already arrived. */
   excludeAlreadyVisited?: boolean;
+  /** Filter by call status (client-side, derived from callAttempts store). null = all. */
+  callStatus?: CallStatus | null;
   /** Limit the number of rows returned (defaults to 200). */
   limit?: number;
 }
