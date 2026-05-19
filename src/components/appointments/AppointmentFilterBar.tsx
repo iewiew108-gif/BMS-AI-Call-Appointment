@@ -39,23 +39,17 @@ const QUICK_RANGES: QuickRangeChip[] = [
   { label: '30 วัน',     start: todayIso,     end: () => daysAheadIso(29) },
 ];
 
-interface CallStatusChip {
-  label: string;
-  value: CallStatus | null;
-  activeClass: string;
-}
-
-const CALL_STATUS_CHIPS: CallStatusChip[] = [
-  { label: 'ทั้งหมด',     value: null,              activeClass: 'border-slate-900 bg-slate-900 text-white' },
-  { label: 'รอโทร',       value: 'pending',         activeClass: 'border-amber-600 bg-amber-500 text-white' },
-  { label: 'อยู่ในคิว',   value: 'queued',          activeClass: 'border-sky-600 bg-sky-500 text-white' },
-  { label: 'กำลังโทร',   value: 'calling',         activeClass: 'border-blue-600 bg-blue-500 text-white' },
-  { label: 'ยืนยัน',      value: 'confirmed',       activeClass: 'border-emerald-600 bg-emerald-500 text-white' },
-  { label: 'เลื่อนนัด',   value: 'rescheduled',     activeClass: 'border-orange-600 bg-orange-500 text-white' },
-  { label: 'ยกเลิก',      value: 'cancelled',       activeClass: 'border-red-600 bg-red-500 text-white' },
-  { label: 'ไม่รับสาย',   value: 'no_answer',       activeClass: 'border-slate-500 bg-slate-500 text-white' },
-  { label: 'Escalate',    value: 'escalated',       activeClass: 'border-rose-600 bg-rose-500 text-white' },
-  { label: 'มาแล้ว',      value: 'already_visited', activeClass: 'border-teal-600 bg-teal-500 text-white' },
+const CALL_STATUS_OPTIONS: { label: string; value: CallStatus | '' }[] = [
+  { label: 'ทั้งหมด',    value: '' },
+  { label: 'รอโทร',      value: 'pending' },
+  { label: 'อยู่ในคิว',  value: 'queued' },
+  { label: 'กำลังโทร',  value: 'calling' },
+  { label: 'ยืนยัน',     value: 'confirmed' },
+  { label: 'เลื่อนนัด',  value: 'rescheduled' },
+  { label: 'ยกเลิก',     value: 'cancelled' },
+  { label: 'ไม่รับสาย',  value: 'no_answer' },
+  { label: 'Escalate',   value: 'escalated' },
+  { label: 'มาแล้ว',     value: 'already_visited' },
 ];
 
 interface AppointmentFilterBarProps {
@@ -94,7 +88,7 @@ export function AppointmentFilterBar({
 
       <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-12">
         {/* Date range */}
-        <div className="md:col-span-3">
+        <div className="md:col-span-2">
           <label className="text-xs text-slate-600">วันที่นัด — จาก</label>
           <Input
             type="date"
@@ -103,7 +97,7 @@ export function AppointmentFilterBar({
             className="mt-1"
           />
         </div>
-        <div className="md:col-span-3">
+        <div className="md:col-span-2">
           <label className="text-xs text-slate-600">ถึง</label>
           <Input
             type="date"
@@ -113,7 +107,27 @@ export function AppointmentFilterBar({
           />
         </div>
 
-        {/* Clinic + Doctor + ผู้นัด */}
+        {/* Call status dropdown */}
+        <div className="md:col-span-2">
+          <label htmlFor="filter-call-status" className="text-xs text-slate-600">สถานะการโทร</label>
+          <select
+            id="filter-call-status"
+            title="สถานะการโทร"
+            value={filter.callStatus ?? ''}
+            onChange={(e) =>
+              setFilter({ callStatus: e.target.value === '' ? null : (e.target.value as CallStatus) })
+            }
+            className="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-slate-500 focus:outline-none focus:ring-1 focus:ring-slate-500"
+          >
+            {CALL_STATUS_OPTIONS.map((opt) => (
+              <option key={opt.value} value={opt.value}>
+                {opt.label}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        {/* Clinic */}
         <div className="md:col-span-2">
           <label className="text-xs text-slate-600">คลินิก (รหัส)</label>
           <Input
@@ -171,29 +185,6 @@ export function AppointmentFilterBar({
                 'rounded-full border px-3 py-1 text-xs transition',
                 active
                   ? 'border-slate-900 bg-slate-900 text-white'
-                  : 'border-slate-300 bg-white text-slate-700 hover:bg-slate-50',
-              )}
-            >
-              {c.label}
-            </button>
-          );
-        })}
-      </div>
-
-      {/* Call status chips */}
-      <div className="mt-2 flex flex-wrap items-center gap-2">
-        <span className="text-xs text-slate-600">สถานะโทร:</span>
-        {CALL_STATUS_CHIPS.map((c) => {
-          const active = (filter.callStatus ?? null) === c.value;
-          return (
-            <button
-              type="button"
-              key={c.label}
-              onClick={() => setFilter({ callStatus: c.value })}
-              className={cn(
-                'rounded-full border px-3 py-1 text-xs transition',
-                active
-                  ? c.activeClass
                   : 'border-slate-300 bg-white text-slate-700 hover:bg-slate-50',
               )}
             >
