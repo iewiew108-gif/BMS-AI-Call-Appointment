@@ -90,11 +90,11 @@ export function AppointmentTable({
               <th className="px-2 py-2">วันนัด</th>
               <th className="px-2 py-2">เวลา</th>
               <th className="px-2 py-2">HN</th>
-              <th className="px-2 py-2">ชื่อผู้ป่วย</th>
+              <th className="min-w-[11rem] px-2 py-2">ชื่อผู้ป่วย</th>
               <th className="px-2 py-2">เบอร์โทร</th>
               <th className="px-2 py-2">QS Slot</th>
-              <th className="px-2 py-2">คลินิก / หัตถการ</th>
-              <th className="px-2 py-2">แพทย์</th>
+              <th className="min-w-[16rem] px-2 py-2">คลินิก / หัตถการ</th>
+              <th className="min-w-[10rem] px-2 py-2">แพทย์</th>
               <th className="px-2 py-2">สถานะนัด</th>
               <th className="px-2 py-2">สถานะโทร</th>
               <th className="px-2 py-2">มาตรวจ</th>
@@ -164,7 +164,7 @@ export function AppointmentTable({
                       )}
                     </td>
                     <td className="px-2 py-2 font-mono text-xs text-slate-700">{row.hn}</td>
-                    <td className="px-2 py-2">
+                    <td className="min-w-[11rem] px-2 py-2">
                       <div className="font-medium text-slate-900">{row.patientName || '—'}</div>
                       <div className="text-xs text-slate-500">
                         {age != null ? `${age} ปี` : '—'} {sexLabel(row.sex) !== '—' ? `• ${sexLabel(row.sex)}` : ''}
@@ -186,13 +186,13 @@ export function AppointmentTable({
                         {row.queueSlotNumber ?? '—'}
                       </span>
                     </td>
-                    <td className="px-2 py-2">
+                    <td className="min-w-[16rem] px-2 py-2">
                       <div className="font-medium text-slate-800">{row.clinicName ?? row.clinic ?? '—'}</div>
-                      <div className="text-xs text-slate-500 truncate max-w-[14rem]">
+                      <div className="text-xs text-slate-500 truncate max-w-[20rem]">
                         {row.operationNote ?? row.appCause ?? '—'}
                       </div>
                     </td>
-                    <td className="px-2 py-2 text-slate-700">
+                    <td className="min-w-[10rem] px-2 py-2 text-slate-700">
                       <div className="text-sm">{row.doctorName ?? row.doctor ?? '—'}</div>
                       <div className="text-[10px] text-slate-400">{row.depName ?? '—'}</div>
                     </td>
