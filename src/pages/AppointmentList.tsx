@@ -14,6 +14,7 @@ import { BulkCallQueueDialog } from '@/components/appointments/BulkCallQueueDial
 import { JitsiCallModal, type JitsiCallSession } from '@/components/appointments/JitsiCallModal';
 import { RetrySchedulerBar } from '@/components/appointments/RetrySchedulerBar';
 import { useAppointments, type EnrichedAppointment } from '@/hooks/useAppointments';
+import { useFilterOptions } from '@/hooks/useFilterOptions';
 import { useRetryScheduler } from '@/hooks/useRetryScheduler';
 import { upsertCallAttempt } from '@/services/callAttempts';
 import { enqueueConfirmCall, sendMorPhromConfirmInvite } from '@/services/aidx';
@@ -43,6 +44,8 @@ export default function AppointmentList() {
   } = useAppointments();
 
   const { session } = useBmsSessionContext();
+  const { clinicOptions, doctorOptions, isLoading: optionsLoading } =
+    useFilterOptions(filter.startDate, filter.endDate);
 
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [drawerRow, setDrawerRow] = useState<EnrichedAppointment | null>(null);
@@ -278,6 +281,9 @@ export default function AppointmentList() {
         resetFilter={resetFilter}
         onRefresh={() => void refetch()}
         isLoading={isLoading}
+        clinicOptions={clinicOptions}
+        doctorOptions={doctorOptions}
+        optionsLoading={optionsLoading}
       />
 
       {/* Retry scheduler status bar */}

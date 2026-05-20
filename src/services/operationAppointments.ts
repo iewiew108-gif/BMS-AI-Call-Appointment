@@ -80,7 +80,7 @@ function clampLimit(limit: number | undefined): number {
  * `visit_status` column reflects the same idea via the explicit `visit_vn`
  * link (matches HOSxP's example query).
  */
-export function buildAppointmentSql(filter: AppointmentFilter): string {
+export function buildAppointmentSql(filter: AppointmentFilter, databaseType = 'mysql'): string {
   const clauses: string[] = [
     'o.nextdate BETWEEN :start_date AND :end_date',
     '(o.oapp_status_id < 4 OR o.oapp_status_id IS NULL)',
@@ -92,6 +92,24 @@ export function buildAppointmentSql(filter: AppointmentFilter): string {
   if (asNullableString(filter.hn)) clauses.push('o.hn = :hn');
 
   const limit = clampLimit(filter.limit);
+  const pg = databaseType === 'postgresql';
+
+  // Aggregate function: GROUP_CONCAT (MySQL) vs STRING_AGG (PostgreSQL)
+  const opSetNamesAgg = pg
+    ? `STRING_AGG(os.operation_name, E'\\n' ORDER BY os.operation_set_id)`
+    : `GROUP_CONCAT(DISTINCT os.operation_name ORDER BY os.operation_set_id SEPARATOR '\\n')`;
+
+  // Conditional expression: IF() (MySQL) vs CASE WHEN (PostgreSQL / standard SQL)
+  const roadExpr = pg
+    ? `CASE WHEN LENGTH(p.road) > 0 THEN CONCAT(' ถนน', p.road) ELSE '' END`
+    : `IF(LENGTH(p.road) > 0, CONCAT(' ถนน', p.road), '')`;
+
+  // CAST target type: CHAR (MySQL) vs VARCHAR (PostgreSQL)
+  const charType200 = pg ? 'VARCHAR(200)' : 'CHAR(200)';
+  const charType1000 = pg ? 'VARCHAR(1000)' : 'CHAR(1000)';
+
+  // Empty-string compare — both dialects accept != '' but PostgreSQL prefers <> ''
+  const notEmpty = pg ? "<> ''" : "!= ''";
 
   return `
 SELECT
@@ -104,29 +122,29 @@ SELECT
   p.cid, p.sex, p.birthday,
   p.mobile_phone_number, p.hometel, p.informtel,
   o.app_cause, o.note, o.operation_note,
-  (SELECT GROUP_CONCAT(DISTINCT os.operation_name ORDER BY os.operation_set_id SEPARATOR '\n')
+  (SELECT ${opSetNamesAgg}
    FROM operation_set os
-   WHERE os.vn = o.vn OR (o.an IS NOT NULL AND o.an != '' AND os.an = o.an)
+   WHERE os.vn = o.vn OR (o.an IS NOT NULL AND o.an ${notEmpty} AND os.an = o.an)
   ) AS op_set_names,
   (SELECT MIN(os.operation_set_date)
    FROM operation_set os
-   WHERE os.vn = o.vn OR (o.an IS NOT NULL AND o.an != '' AND os.an = o.an)
+   WHERE os.vn = o.vn OR (o.an IS NOT NULL AND o.an ${notEmpty} AND os.an = o.an)
   ) AS op_set_date,
   (SELECT MIN(os.operation_set_time)
    FROM operation_set os
-   WHERE os.vn = o.vn OR (o.an IS NOT NULL AND o.an != '' AND os.an = o.an)
+   WHERE os.vn = o.vn OR (o.an IS NOT NULL AND o.an ${notEmpty} AND os.an = o.an)
   ) AS op_set_time,
   o.app_user, o3.name AS app_user_name,
   o.oapp_status_id, o2.oapp_status_name,
   CAST(CONCAT(
     COALESCE(p.addrpart,''), ' หมู่ ', COALESCE(p.moopart,''),
-    IF(LENGTH(p.road)>0, CONCAT(' ถนน', p.road), ''),
+    ${roadExpr},
     ' ', COALESCE(t.full_name,'')
-  ) AS CHAR(200)) AS addr_name,
+  ) AS ${charType200}) AS addr_name,
   qs.queue_slot_number,
   r1.referin_number,
-  CAST(o.lab_list_text  AS CHAR(1000)) AS lab_list_text,
-  CAST(o.xray_list_text AS CHAR(1000)) AS xray_list_text,
+  CAST(o.lab_list_text  AS ${charType1000}) AS lab_list_text,
+  CAST(o.xray_list_text AS ${charType1000}) AS xray_list_text,
   om.rt_send_status AS mp_send_status,
   om.confirm_datetime AS mp_confirm_datetime,
   COALESCE(ov.vn, 'ยังไม่ส่งตรวจ') AS visit_status,
@@ -265,6 +283,79 @@ export function bestContactFor(appointment: Appointment): BestContact {
 }
 
 // ---------------------------------------------------------------------------
+// Filter options — distinct clinics / doctors for dropdown selects
+// ---------------------------------------------------------------------------
+
+export interface FilterOption {
+  code: string;
+  label: string;
+}
+
+function buildClinicSql(databaseType: string): string {
+  // DISTINCT + ORDER BY on an alias works in both MySQL and PostgreSQL
+  // No dialect-specific functions needed here — COALESCE is standard SQL
+  const notEmpty = databaseType === 'postgresql' ? "<> ''" : "!= ''";
+  return `
+SELECT DISTINCT o.clinic AS code, COALESCE(c.name, o.clinic) AS label
+FROM oapp o
+LEFT JOIN clinic c ON c.clinic = o.clinic
+WHERE o.nextdate BETWEEN :start_date AND :end_date
+  AND o.clinic IS NOT NULL AND o.clinic ${notEmpty}
+ORDER BY label
+LIMIT 300
+`.trim();
+}
+
+function buildDoctorSql(databaseType: string): string {
+  const notEmpty = databaseType === 'postgresql' ? "<> ''" : "!= ''";
+  return `
+SELECT DISTINCT o.doctor AS code, COALESCE(d.name, o.doctor) AS label
+FROM oapp o
+LEFT JOIN doctor d ON d.code = o.doctor
+WHERE o.nextdate BETWEEN :start_date AND :end_date
+  AND o.doctor IS NOT NULL AND o.doctor ${notEmpty}
+ORDER BY label
+LIMIT 300
+`.trim();
+}
+
+export async function fetchClinicOptions(
+  startDate: string,
+  endDate: string,
+  config: ConnectionConfig,
+  marketplaceToken?: string,
+): Promise<FilterOption[]> {
+  const params = {
+    start_date: { value: startDate, value_type: 'date' as const },
+    end_date:   { value: endDate,   value_type: 'date' as const },
+  };
+  const sql = buildClinicSql(config.databaseType);
+  const response = await executeSqlViaApiQueued(sql, config, params, marketplaceToken);
+  return (response.data ?? []).map((row: Record<string, unknown>) => ({
+    code:  String(row.code  ?? ''),
+    label: String(row.label ?? row.code ?? ''),
+  })).filter((o) => o.code);
+}
+
+export async function fetchDoctorOptions(
+  startDate: string,
+  endDate: string,
+  config: ConnectionConfig,
+  marketplaceToken?: string,
+): Promise<FilterOption[]> {
+  const params = {
+    start_date: { value: startDate, value_type: 'date' as const },
+    end_date:   { value: endDate,   value_type: 'date' as const },
+  };
+  const sql = buildDoctorSql(config.databaseType);
+  const response = await executeSqlViaApiQueued(sql, config, params, marketplaceToken);
+  return (response.data ?? []).map((row: Record<string, unknown>) => ({
+    code:  String(row.code  ?? ''),
+    label: String(row.label ?? row.code ?? ''),
+  })).filter((o) => o.code);
+}
+
+// ---------------------------------------------------------------------------
 // Public entry point
 // ---------------------------------------------------------------------------
 
@@ -280,7 +371,7 @@ export async function listOneDayCaseAppointments(
   config: ConnectionConfig,
   marketplaceToken?: string,
 ): Promise<Appointment[]> {
-  const sql = buildAppointmentSql(filter);
+  const sql = buildAppointmentSql(filter, config.databaseType);
   const params = buildAppointmentParams(filter);
 
   const response = await executeSqlViaApiQueued(sql, config, params, marketplaceToken);

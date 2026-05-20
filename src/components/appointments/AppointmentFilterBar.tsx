@@ -3,12 +3,13 @@
 // =============================================================================
 
 import { useCallback, useState } from 'react';
-import { Search, RefreshCw, Filter } from 'lucide-react';
+import { Search, RefreshCw, Filter, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { formatDateISO } from '@/utils/dateUtils';
 import type { AppointmentFilter, CallStatus } from '@/types/appointment';
+import type { FilterOption } from '@/services/operationAppointments';
 
 function todayIso(): string {
   return formatDateISO(new Date());
@@ -58,6 +59,9 @@ interface AppointmentFilterBarProps {
   resetFilter: () => void;
   onRefresh: () => void;
   isLoading?: boolean;
+  clinicOptions?: FilterOption[];
+  doctorOptions?: FilterOption[];
+  optionsLoading?: boolean;
 }
 
 export function AppointmentFilterBar({
@@ -66,6 +70,9 @@ export function AppointmentFilterBar({
   resetFilter,
   onRefresh,
   isLoading,
+  clinicOptions = [],
+  doctorOptions = [],
+  optionsLoading = false,
 }: AppointmentFilterBarProps) {
   // Mirror HN locally so typing is responsive — apply only on Enter / blur.
   const [hnDraft, setHnDraft] = useState<string>(filter.hn ?? '');
@@ -129,26 +136,57 @@ export function AppointmentFilterBar({
 
         {/* Clinic */}
         <div className="md:col-span-2">
-          <label className="text-xs text-slate-600">คลินิก (รหัส)</label>
-          <Input
-            placeholder="ทั้งหมด"
+          <label htmlFor="filter-clinic" className="flex items-center gap-1 text-xs text-slate-600">
+            คลินิก
+            {optionsLoading && <Loader2 className="h-3 w-3 animate-spin text-slate-400" />}
+          </label>
+          <select
+            id="filter-clinic"
+            title="คลินิก"
             value={filter.clinic ?? ''}
             onChange={(e) =>
-              setFilter({ clinic: e.target.value.trim() === '' ? null : e.target.value })
+              setFilter({ clinic: e.target.value === '' ? null : e.target.value })
             }
-            className="mt-1"
-          />
+            className="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-slate-500 focus:outline-none focus:ring-1 focus:ring-slate-500"
+          >
+            <option value="">— ทั้งหมด —</option>
+            {clinicOptions.map((opt) => (
+              <option key={opt.code} value={opt.code}>
+                {opt.label}
+              </option>
+            ))}
+            {/* fallback: keep current value visible even if options not yet loaded */}
+            {filter.clinic && !clinicOptions.some((o) => o.code === filter.clinic) && (
+              <option value={filter.clinic}>{filter.clinic}</option>
+            )}
+          </select>
         </div>
+
+        {/* Doctor */}
         <div className="md:col-span-2">
-          <label className="text-xs text-slate-600">แพทย์ผู้นัด (รหัส)</label>
-          <Input
-            placeholder="ทั้งหมด"
+          <label htmlFor="filter-doctor" className="flex items-center gap-1 text-xs text-slate-600">
+            แพทย์ผู้นัด
+            {optionsLoading && <Loader2 className="h-3 w-3 animate-spin text-slate-400" />}
+          </label>
+          <select
+            id="filter-doctor"
+            title="แพทย์ผู้นัด"
             value={filter.doctor ?? ''}
             onChange={(e) =>
-              setFilter({ doctor: e.target.value.trim() === '' ? null : e.target.value })
+              setFilter({ doctor: e.target.value === '' ? null : e.target.value })
             }
-            className="mt-1"
-          />
+            className="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-slate-500 focus:outline-none focus:ring-1 focus:ring-slate-500"
+          >
+            <option value="">— ทั้งหมด —</option>
+            {doctorOptions.map((opt) => (
+              <option key={opt.code} value={opt.code}>
+                {opt.label}
+              </option>
+            ))}
+            {filter.doctor && !doctorOptions.some((o) => o.code === filter.doctor) && (
+              <option value={filter.doctor}>{filter.doctor}</option>
+            )}
+          </select>
         </div>
 
         {/* HN search */}

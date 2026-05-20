@@ -5,6 +5,7 @@
 
 import type { ReactNode } from 'react';
 import { AppHeader } from '@/components/layout/AppHeader';
+import { EscalatedAlertPanel } from '@/components/appointments/EscalatedAlertPanel';
 
 interface AppLayoutProps {
   children: ReactNode;
@@ -15,6 +16,7 @@ export function AppLayout({ children }: AppLayoutProps) {
     <div className="app-layout">
       <AppHeader />
       <main className="app-main">{children}</main>
+      <EscalatedAlertPanel />
       <style>{`
         .app-layout {
           display: flex;

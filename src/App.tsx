@@ -10,6 +10,7 @@ import { AppLayout } from '@/components/layout/AppLayout'
 const Overview = lazy(() => import('@/pages/Overview'))
 const AppointmentList = lazy(() => import('@/pages/AppointmentList'))
 const UrgentCallback = lazy(() => import('@/pages/UrgentCallback'))
+const Settings = lazy(() => import('@/pages/Settings'))
 
 function AppRoutes() {
   return (
@@ -18,6 +19,7 @@ function AppRoutes() {
         <Route path="/" element={<Overview />} />
         <Route path="/appointments" element={<AppointmentList />} />
         <Route path="/urgent-callback" element={<UrgentCallback />} />
+        <Route path="/settings" element={<Settings />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </Suspense>

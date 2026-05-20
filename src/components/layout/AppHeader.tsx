@@ -14,6 +14,7 @@ import {
   ChevronDown,
   PhoneCall,
   BellRing,
+  Settings2,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { subscribeUrgentCallbacks, getPendingCount } from '@/services/urgentCallbacks';
@@ -136,6 +137,16 @@ export function AppHeader() {
                 </div>
                 <ChevronDown className="h-4 w-4 text-white/40" />
               </div>
+
+              {/* Settings */}
+              <Link
+                to="/settings"
+                className={`settings-btn ${location.pathname === '/settings' ? 'settings-btn-active' : ''}`}
+                aria-label="ตั้งค่า"
+                title="ตั้งค่า"
+              >
+                <Settings2 className="h-4 w-4" />
+              </Link>
 
               {/* Disconnect */}
               <button type="button" onClick={disconnectSession} className="disconnect-btn">
@@ -413,6 +424,28 @@ export function AppHeader() {
           font-size: 0.625rem;
           color: rgba(255, 255, 255, 0.4);
           line-height: 1.2;
+        }
+
+        .settings-btn {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          width: 2rem;
+          height: 2rem;
+          border-radius: 0.5rem;
+          color: rgba(255, 255, 255, 0.5);
+          transition: all 0.2s ease;
+          text-decoration: none;
+        }
+
+        .settings-btn:hover {
+          color: rgba(255, 255, 255, 0.85);
+          background: rgba(255, 255, 255, 0.08);
+        }
+
+        .settings-btn-active {
+          color: white;
+          background: rgba(255, 255, 255, 0.12);
         }
 
         .disconnect-btn {
