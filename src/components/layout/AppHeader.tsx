@@ -3,7 +3,7 @@
 // Refined professional navigation with modern aesthetics
 // =============================================================================
 
-import { useSyncExternalStore } from 'react';
+import React, { useSyncExternalStore } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { useBmsSessionContext } from '@/contexts/BmsSessionContext';
 import {
@@ -15,9 +15,21 @@ import {
   PhoneCall,
   BellRing,
   Settings2,
+  PawPrint,
+  Cat,
+  Dog,
+  Bird,
+  Stethoscope,
+  Heart,
+  HeartPulse,
+  Hospital,
+  Syringe,
+  ClipboardPlus,
+  ClipboardList,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { subscribeUrgentCallbacks, getPendingCount } from '@/services/urgentCallbacks';
+import { useAppTheme } from '@/hooks/useAppTheme';
 
 // ---------------------------------------------------------------------------
 // Navigation tab definitions
@@ -30,22 +42,47 @@ interface NavTab {
   badge?: () => number;
 }
 
-const NAV_TABS: NavTab[] = [
+const NAV_TABS_HOSPITAL: NavTab[] = [
   { label: 'หน้าหลัก', path: '/', icon: LayoutDashboard },
   { label: 'AI โทรยืนยันนัด', path: '/appointments', icon: PhoneCall },
   { label: 'แจ้งพยาบาลด่วน', path: '/urgent-callback', icon: BellRing, badge: getPendingCount },
+  { label: 'สรุปยอดการโทร', path: '/nurse-call-log', icon: ClipboardList },
+];
+
+const NAV_TABS_VET: NavTab[] = [
+  { label: 'หน้าหลัก', path: '/', icon: PawPrint },
+  { label: 'AI โทรยืนยันนัด', path: '/appointments', icon: Stethoscope },
+  { label: 'แจ้งสัตวแพทย์ด่วน', path: '/urgent-callback', icon: BellRing, badge: getPendingCount },
+  { label: 'สรุปยอดการโทร', path: '/nurse-call-log', icon: ClipboardList },
 ];
 
 // ---------------------------------------------------------------------------
 // Component
 // ---------------------------------------------------------------------------
 
+// Cycling icons per theme
+const VET_ANIMALS    = [Cat, Dog, Bird, PawPrint];
+const HOSP_ICONS     = [Heart, Stethoscope, HeartPulse, Hospital, Activity, ClipboardPlus, Syringe];
+
 export function AppHeader() {
   const { session, disconnectSession } = useBmsSessionContext();
   const location = useLocation();
+  const [theme, setTheme] = useAppTheme();
 
   // Subscribe to urgent callbacks for live badge count
   const urgentPending = useSyncExternalStore(subscribeUrgentCallbacks, getPendingCount);
+
+  const isVet = theme === 'vet';
+  const NAV_TABS = isVet ? NAV_TABS_VET : NAV_TABS_HOSPITAL;
+
+  // Cycle through icons every 2 s (both themes)
+  const [iconIdx, setIconIdx] = React.useState(0);
+  React.useEffect(() => {
+    const list = isVet ? VET_ANIMALS : HOSP_ICONS;
+    const id = setInterval(() => setIconIdx((i) => (i + 1) % list.length), 2000);
+    return () => { setIconIdx(0); clearInterval(id); };
+  }, [isVet]);
+  const BrandIcon = isVet ? VET_ANIMALS[iconIdx] : HOSP_ICONS[iconIdx];
 
   const databaseLabel =
     session?.databaseType === 'postgresql' ? 'PostgreSQL' : 'MySQL';
@@ -53,24 +90,28 @@ export function AppHeader() {
   const userInitial = session?.userInfo.name?.charAt(0).toUpperCase() ?? '?';
 
   return (
-    <header className="app-header">
+    <header className={`app-header ${isVet ? 'app-header-vet' : ''}`}>
       {/* Decorative top accent line */}
-      <div className="header-accent-line" />
+      <div className={`header-accent-line ${isVet ? 'header-accent-vet' : ''}`} />
 
       <div className="header-inner">
         {/* -----------------------------------------------------------------
             Left: Brand
             ----------------------------------------------------------------- */}
         <div className="header-brand">
-          <div className="brand-icon">
-            <Activity className="h-5 w-5" />
+          <div className={`brand-icon ${isVet ? 'brand-icon-vet' : 'brand-icon-hospital'}`}>
+            <BrandIcon className="h-5 w-5" />
           </div>
           <div className="brand-text">
             <div className="brand-title-row">
-              <h1 className="brand-title">Template App</h1>
-              <span className="demo-badge">DEMO</span>
+              <h1 className="brand-title">{isVet ? 'Vet Clinic AI' : 'Template App'}</h1>
+              <span className={`demo-badge ${isVet ? 'demo-badge-vet' : ''}`}>
+                {isVet ? 'VET' : 'DEMO'}
+              </span>
             </div>
-            <span className="brand-subtitle">BMS Session · สำหรับ Demo เท่านั้น</span>
+            <span className="brand-subtitle">
+              {isVet ? 'คลินิกสัตว์ · BMS Session' : 'BMS Session · สำหรับ Demo เท่านั้น'}
+            </span>
           </div>
         </div>
 
@@ -151,6 +192,17 @@ export function AppHeader() {
                 <Settings2 className="h-4 w-4" />
               </Link>
 
+              {/* Theme toggle */}
+              <button
+                type="button"
+                onClick={() => setTheme(isVet ? 'hospital' : 'vet')}
+                className={`theme-toggle-btn ${isVet ? 'theme-toggle-vet' : ''}`}
+                title={isVet ? 'สลับเป็นธีมโรงพยาบาล' : 'สลับเป็นธีมคลินิกสัตว์'}
+              >
+                {isVet ? <Activity className="h-4 w-4" /> : <PawPrint className="h-4 w-4" />}
+                <span>{isVet ? 'Hospital' : '🐾 Vet'}</span>
+              </button>
+
               {/* Disconnect */}
               <button type="button" onClick={disconnectSession} className="disconnect-btn">
                 <LogOut className="h-4 w-4" />
@@ -168,11 +220,23 @@ export function AppHeader() {
           z-index: 50;
           background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
           border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+          transition: background 0.4s ease;
+        }
+
+        /* ---- Vet theme overrides ---- */
+        .app-header-vet {
+          background: linear-gradient(135deg, #064e3b 0%, #065f46 50%, #047857 100%);
+          border-bottom: 1px solid rgba(255, 255, 255, 0.1);
         }
 
         .header-accent-line {
           height: 2px;
           background: linear-gradient(90deg, #60a5fa 0%, #a78bfa 50%, #f472b6 100%);
+          transition: background 0.4s ease;
+        }
+
+        .header-accent-vet {
+          background: linear-gradient(90deg, #6ee7b7 0%, #34d399 35%, #fbbf24 65%, #f9a8d4 100%);
         }
 
         .header-inner {
@@ -497,6 +561,69 @@ export function AppHeader() {
           color: #ef4444;
         }
 
+        /* ---- hospital brand icon ---- */
+        .brand-icon-hospital {
+          animation: hospPulse 1.4s ease-in-out infinite;
+        }
+
+        @keyframes hospPulse {
+          0%, 100% { transform: scale(1); box-shadow: 0 2px 8px -2px rgba(99,102,241,0.5); }
+          14%       { transform: scale(1.22); box-shadow: 0 4px 14px -2px rgba(99,102,241,0.7); }
+          28%       { transform: scale(1); }
+          42%       { transform: scale(1.15); }
+          56%       { transform: scale(1); }
+        }
+
+        /* ---- vet brand icon ---- */
+        .brand-icon-vet {
+          background: linear-gradient(135deg, #34d399 0%, #6ee7b7 100%);
+          box-shadow: 0 2px 8px -2px rgba(52, 211, 153, 0.5);
+          animation: petBounce 1.8s ease-in-out infinite;
+        }
+
+        @keyframes petBounce {
+          0%, 100% { transform: translateY(0); }
+          50%       { transform: translateY(-3px); }
+        }
+
+        /* ---- vet demo badge ---- */
+        .demo-badge-vet {
+          color: #6ee7b7;
+          background: rgba(52, 211, 153, 0.18);
+          border: 1px solid rgba(52, 211, 153, 0.4);
+        }
+
+        /* ---- theme toggle button ---- */
+        .theme-toggle-btn {
+          display: flex;
+          align-items: center;
+          gap: 0.4rem;
+          padding: 0.4rem 0.75rem;
+          background: transparent;
+          border: 1px solid rgba(255, 255, 255, 0.2);
+          border-radius: 0.5rem;
+          font-size: 0.75rem;
+          font-weight: 500;
+          color: rgba(255, 255, 255, 0.7);
+          cursor: pointer;
+          transition: all 0.2s ease;
+        }
+
+        .theme-toggle-btn:hover {
+          background: rgba(255, 255, 255, 0.08);
+          color: white;
+        }
+
+        .theme-toggle-vet {
+          border-color: rgba(110, 231, 183, 0.4);
+          color: #6ee7b7;
+        }
+
+        .theme-toggle-vet:hover {
+          background: rgba(52, 211, 153, 0.1);
+          color: #a7f3d0;
+        }
+
         @media (max-width: 768px) {
           .header-inner {
             padding: 0 1rem;
@@ -508,11 +635,13 @@ export function AppHeader() {
             display: none;
           }
 
-          .disconnect-btn span {
+          .disconnect-btn span,
+          .theme-toggle-btn span {
             display: none;
           }
 
-          .disconnect-btn {
+          .disconnect-btn,
+          .theme-toggle-btn {
             padding: 0.5rem;
           }
         }

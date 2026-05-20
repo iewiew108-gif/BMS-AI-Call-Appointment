@@ -2,8 +2,8 @@
 // AppointmentTable — list of appointments mirroring HOSxPAppointmentListForm
 // =============================================================================
 
-import { useMemo } from 'react';
-import { Phone, ChevronRight, AlertTriangle, FlaskConical, Scan, CheckCircle2 } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { Phone, ChevronRight, AlertTriangle, CheckCircle2, FileText } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { AppointmentStatusBadge } from './AppointmentStatusBadge';
 import { bestContactFor } from '@/services/operationAppointments';
@@ -18,6 +18,12 @@ interface AppointmentTableProps {
   isLoading: boolean;
 }
 
+interface ContextMenu {
+  x: number;
+  y: number;
+  row: EnrichedAppointment;
+}
+
 function formatTime(time: string | null): string {
   if (!time) return '—';
   return time.slice(0, 5);
@@ -28,14 +34,6 @@ function formatDateShort(iso: string | null): string {
   const parts = iso.split('-');
   if (parts.length !== 3) return iso;
   return `${parts[2]}/${parts[1]}/${parts[0].slice(-2)}`;
-}
-
-function formatDateTimeShort(iso: string | null): string {
-  if (!iso) return '—';
-  // Accepts "2026-05-14 18:32:00" or ISO
-  const match = iso.match(/^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})/);
-  if (match) return `${match[3]}/${match[2]} ${match[4]}:${match[5]}`;
-  return iso;
 }
 
 function calcAge(birthday: string | null): number | null {
@@ -71,54 +69,97 @@ export function AppointmentTable({
     callableRows.length > 0 &&
     callableRows.every((r) => selectedIds.has(r.oappId));
 
+  // ---------------------------------------------------------------- context menu
+  const [ctxMenu, setCtxMenu] = useState<ContextMenu | null>(null);
+  const ctxRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!ctxMenu) return;
+    const close = (e: MouseEvent | KeyboardEvent) => {
+      if (e instanceof KeyboardEvent && e.key !== 'Escape') return;
+      if (e instanceof MouseEvent && ctxRef.current?.contains(e.target as Node)) return;
+      setCtxMenu(null);
+    };
+    document.addEventListener('mousedown', close);
+    document.addEventListener('keydown', close);
+    return () => {
+      document.removeEventListener('mousedown', close);
+      document.removeEventListener('keydown', close);
+    };
+  }, [ctxMenu]);
+
+  const handleContextMenu = (e: React.MouseEvent, row: EnrichedAppointment) => {
+    e.preventDefault();
+    setCtxMenu({ x: e.clientX, y: e.clientY, row });
+  };
+
   return (
     <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
-      <div className="max-h-[65vh] overflow-auto">
-        <table className="min-w-[1500px] divide-y divide-slate-200 text-sm">
+      {/* ---------------------------------------------------------------- table */}
+      <div className="max-h-[72vh] overflow-y-auto">
+        <table className="w-full table-fixed divide-y divide-slate-200 text-xs">
+          {/*
+            Percentages must account for 3 fixed w-8 (32 px each = 96 px) cols.
+            On a ~1400 px table: fixed share ≈ 6.9 %, so % cols must sum ≤ ~93 %.
+          */}
+          <colgroup>
+            <col className="w-8" />      {/* # */}
+            <col className="w-8" />      {/* checkbox */}
+            <col className="w-[8%]" />   {/* สถานะโทร */}
+            <col className="w-[6%]" />   {/* วันนัด+เวลา */}
+            <col className="w-[5%]" />   {/* HN */}
+            <col className="w-[11%]" />  {/* ชื่อผู้ป่วย */}
+            <col className="w-[5%]" />   {/* ชื่อเล่น */}
+            <col className="w-[8%]" />   {/* เบอร์โทร */}
+            <col className="w-[3.5%]" /> {/* QS */}
+            <col className="w-[11%]" />  {/* คลินิก */}
+            <col className="w-[10%]" />  {/* รายการผ่าตัด */}
+            <col className="w-[9.5%]" /> {/* แพทย์ */}
+            <col className="w-[6%]" />   {/* สถานะนัด */}
+            <col className="w-[5.5%]" /> {/* มาแล้ว */}
+            <col className="w-[7%]" />   {/* หมายเหตุ */}
+            <col className="w-8" />      {/* detail */}
+          </colgroup>
           <thead className="sticky top-0 z-10 bg-slate-50">
-            <tr className="text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-              <th className="w-10 px-2 py-2 text-center">#</th>
-              <th className="w-10 px-2 py-2">
+            <tr className="text-left text-[10px] font-semibold uppercase tracking-wide text-slate-500">
+              <th className="px-1.5 py-2 text-center">#</th>
+              <th className="px-1.5 py-2">
                 <input
                   type="checkbox"
-                  className="h-4 w-4 rounded border-slate-300"
+                  className="h-3.5 w-3.5 rounded border-slate-300"
                   checked={allSelected}
                   onChange={(e) => onToggleSelectAll(e.target.checked)}
                   aria-label="เลือกทั้งหมด"
                 />
               </th>
-              <th className="px-2 py-2">วันนัด</th>
-              <th className="px-2 py-2">เวลา</th>
-              <th className="px-2 py-2">HN</th>
-              <th className="min-w-[11rem] px-2 py-2">ชื่อผู้ป่วย</th>
-              <th className="px-2 py-2">เบอร์โทร</th>
-              <th className="px-2 py-2">QS Slot</th>
-              <th className="min-w-[16rem] px-2 py-2">คลินิก / หัตถการ</th>
-              <th className="min-w-[14rem] px-2 py-2">ชื่อรายการผ่าตัด</th>
-              <th className="min-w-[9rem] px-2 py-2">วัน/เวลาผ่าตัด</th>
-              <th className="min-w-[10rem] px-2 py-2">แพทย์</th>
-              <th className="px-2 py-2">สถานะนัด</th>
-              <th className="px-2 py-2">สถานะโทร</th>
-              <th className="px-2 py-2">มาตรวจ</th>
-              <th className="px-2 py-2">หมอพร้อม</th>
-              <th className="px-2 py-2">Lab / X-Ray</th>
-              <th className="px-2 py-2">ผู้นัด</th>
-              <th className="px-2 py-2">หมายเหตุ</th>
-              <th className="w-10 px-2 py-2 text-right" aria-label="รายละเอียด" />
+              <th className="px-1.5 py-2">สถานะโทร</th>
+              <th className="px-1.5 py-2">วันนัด</th>
+              <th className="px-1.5 py-2">HN</th>
+              <th className="px-1.5 py-2">ชื่อผู้ป่วย</th>
+              <th className="px-1.5 py-2">ชื่อเล่น</th>
+              <th className="px-1.5 py-2">เบอร์โทร</th>
+              <th className="px-1.5 py-2">QS</th>
+              <th className="px-1.5 py-2">คลินิก / หัตถการ</th>
+              <th className="px-1.5 py-2">รายการผ่าตัด</th>
+              <th className="px-1.5 py-2">แพทย์</th>
+              <th className="px-1.5 py-2">สถานะนัด</th>
+              <th className="px-1.5 py-2">มาแล้ว</th>
+              <th className="px-1.5 py-2">หมายเหตุ</th>
+              <th className="px-1.5 py-2 text-right"><span className="sr-only">รายละเอียด</span></th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
             {isLoading && rows.length === 0 ? (
               Array.from({ length: 6 }).map((_, i) => (
                 <tr key={`skeleton-${i}`}>
-                  <td colSpan={20} className="px-3 py-3">
-                    <div className="h-8 animate-pulse rounded bg-slate-100" />
+                  <td colSpan={16} className="px-3 py-3">
+                    <div className="h-7 animate-pulse rounded bg-slate-100" />
                   </td>
                 </tr>
               ))
             ) : rows.length === 0 ? (
               <tr>
-                <td colSpan={20} className="px-6 py-16 text-center text-sm text-slate-500">
+                <td colSpan={16} className="px-6 py-16 text-center text-sm text-slate-500">
                   <p className="font-medium text-slate-700">ไม่มีรายการนัดในช่วงที่เลือก</p>
                   <p className="mt-1">ลองปรับช่วงวันที่ หรือเอาเงื่อนไขออกบางอัน</p>
                 </td>
@@ -131,159 +172,174 @@ export function AppointmentTable({
                 const contact = bestContactFor(row);
                 const hasMorPhromCid = row.cid && /^\d{13}$/.test(row.cid);
                 const visited = row.visitStatus !== 'ยังไม่ส่งตรวจ';
+                const isEscalated = row.callStatus === 'escalated';
                 return (
                   <tr
                     key={row.oappId}
+                    onContextMenu={(e) => handleContextMenu(e, row)}
                     className={cn(
                       'transition hover:bg-slate-50',
                       !callable && 'bg-slate-50/60 text-slate-500',
                       isSelected && 'bg-blue-50/60',
+                      isEscalated && 'bg-rose-50/40',
                     )}
                   >
-                    <td className="px-2 py-2 text-center text-xs text-slate-500">{index + 1}</td>
-                    <td className="px-2 py-2">
+                    {/* # */}
+                    <td className="px-1.5 py-1.5 text-center text-[10px] text-slate-400">{index + 1}</td>
+
+                    {/* checkbox */}
+                    <td className="px-1.5 py-1.5">
                       <input
                         type="checkbox"
-                        className="h-4 w-4 rounded border-slate-300"
+                        className="h-3.5 w-3.5 rounded border-slate-300"
                         checked={isSelected}
                         disabled={!callable}
                         onChange={(e) => onToggleSelect(row.oappId, e.target.checked)}
                         aria-label={`เลือก oapp ${row.oappId}`}
                       />
                     </td>
-                    <td className="px-2 py-2 whitespace-nowrap">
+
+                    {/* สถานะโทร */}
+                    <td className="px-1.5 py-1.5">
+                      <AppointmentStatusBadge status={row.callStatus} />
+                    </td>
+
+                    {/* วันนัด + เวลา */}
+                    <td className="px-1.5 py-1.5 whitespace-nowrap">
                       <div className="font-medium text-slate-900">{formatDateShort(row.nextDate)}</div>
-                      {row.vstDate && (
-                        <div className="text-[10px] text-slate-400">จาก {formatDateShort(row.vstDate)}</div>
-                      )}
+                      <div className="font-mono text-[10px] text-slate-500">{formatTime(row.nextTime)}</div>
                     </td>
-                    <td className="px-2 py-2 whitespace-nowrap text-slate-700">
-                      <div className="font-mono text-xs">{formatTime(row.nextTime)}</div>
-                      {row.nextTimeEnd && (
-                        <div className="font-mono text-[10px] text-slate-400">
-                          – {formatTime(row.nextTimeEnd)}
-                        </div>
-                      )}
+
+                    {/* HN */}
+                    <td className="px-1.5 py-1.5 font-mono text-slate-700 truncate" title={row.hn}>
+                      {row.hn}
                     </td>
-                    <td className="px-2 py-2 font-mono text-xs text-slate-700">{row.hn}</td>
-                    <td className="min-w-[11rem] px-2 py-2">
-                      <div className="font-medium text-slate-900">{row.patientName || '—'}</div>
-                      <div className="text-xs text-slate-500">
-                        {age != null ? `${age} ปี` : '—'} {sexLabel(row.sex) !== '—' ? `• ${sexLabel(row.sex)}` : ''}
+
+                    {/* ชื่อผู้ป่วย */}
+                    <td className="px-1.5 py-1.5">
+                      <div
+                        className={cn(
+                          'truncate font-medium',
+                          isEscalated ? 'text-rose-600' : 'text-slate-900',
+                        )}
+                        title={row.patientName}
+                      >
+                        {row.patientName || '—'}
+                      </div>
+                      <div className="text-[10px] text-slate-400">
+                        {age != null ? `${age} ปี` : ''}
+                        {sexLabel(row.sex) !== '—' ? ` · ${sexLabel(row.sex)}` : ''}
                       </div>
                     </td>
-                    <td className="px-2 py-2">
-                      <div className="flex items-center gap-1 text-xs text-slate-700">
-                        <Phone className="h-3 w-3 text-slate-400" />
-                        {contact.phone ?? '—'}
+
+                    {/* ชื่อเล่น */}
+                    <td className="px-1.5 py-1.5">
+                      <span
+                        className="truncate block text-slate-600"
+                        title={row.nickname ?? ''}
+                      >
+                        {row.nickname ? `"${row.nickname}"` : '—'}
+                      </span>
+                    </td>
+
+                    {/* เบอร์โทร */}
+                    <td className="px-1.5 py-1.5">
+                      <div className="flex items-center gap-1 text-slate-700">
+                        <Phone className="h-3 w-3 shrink-0 text-slate-400" />
+                        <span className="truncate" title={contact.phone ?? '—'}>{contact.phone ?? '—'}</span>
                       </div>
                       {!hasMorPhromCid && (
                         <div className="mt-0.5 inline-flex items-center gap-0.5 text-[10px] text-amber-700">
-                          <AlertTriangle className="h-2.5 w-2.5" /> ไม่มี CID
+                          <AlertTriangle className="h-2.5 w-2.5 shrink-0" /> ไม่มี CID
                         </div>
                       )}
                     </td>
-                    <td className="px-2 py-2">
-                      <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-mono text-slate-700">
+
+                    {/* QS Slot */}
+                    <td className="px-1.5 py-1.5">
+                      <span className="rounded bg-slate-100 px-1 py-0.5 text-[10px] font-mono text-slate-700">
                         {row.queueSlotNumber ?? '—'}
                       </span>
                     </td>
-                    <td className="min-w-[16rem] px-2 py-2">
-                      <div className="font-medium text-slate-800">{row.clinicName ?? row.clinic ?? '—'}</div>
-                      <div className="text-xs text-slate-500 truncate max-w-[20rem]">
-                        {row.operationNote ?? row.appCause ?? '—'}
+
+                    {/* คลินิก / หัตถการ */}
+                    <td className="px-1.5 py-1.5">
+                      <div
+                        className="truncate font-medium text-slate-800"
+                        title={row.clinicName ?? row.clinic ?? '—'}
+                      >
+                        {row.clinicName ?? row.clinic ?? '—'}
+                      </div>
+                      <div
+                        className="truncate text-[10px] text-slate-500"
+                        title={row.operationNote ?? row.appCause ?? ''}
+                      >
+                        {row.operationNote ?? row.appCause ?? ''}
                       </div>
                     </td>
-                    {/* ชื่อรายการผ่าตัด (operation_set) */}
-                    <td className="min-w-[14rem] px-2 py-2">
+
+                    {/* รายการผ่าตัด */}
+                    <td className="px-1.5 py-1.5">
                       {row.opSetNames ? (
-                        <p className="whitespace-pre-line text-xs text-slate-800 leading-relaxed line-clamp-3" title={row.opSetNames}>
-                          {row.opSetNames}
+                        <p className="truncate text-slate-800" title={row.opSetNames}>
+                          {row.opSetNames.split('\n')[0]}
                         </p>
                       ) : row.operationNote ? (
-                        <p className="text-xs text-slate-500 italic line-clamp-2" title={row.operationNote}>
+                        <p className="truncate text-slate-500 italic" title={row.operationNote}>
                           {row.operationNote}
                         </p>
                       ) : (
-                        <span className="text-xs text-slate-400">—</span>
+                        <span className="text-slate-400">—</span>
                       )}
                     </td>
-                    {/* วัน/เวลาผ่าตัด (operation_set_date/time) */}
-                    <td className="min-w-[9rem] px-2 py-2 whitespace-nowrap">
-                      {row.opSetDate ? (
-                        <>
-                          <div className="font-medium text-slate-900">{formatDateShort(row.opSetDate)}</div>
-                          {row.opSetTime && (
-                            <div className="font-mono text-xs text-slate-600">{formatTime(row.opSetTime)} น.</div>
-                          )}
-                        </>
-                      ) : (
-                        <span className="text-xs text-slate-400">—</span>
-                      )}
+
+                    {/* แพทย์ */}
+                    <td className="px-1.5 py-1.5">
+                      <div
+                        className="truncate text-slate-700"
+                        title={row.doctorName ?? row.doctor ?? '—'}
+                      >
+                        {row.doctorName ?? row.doctor ?? '—'}
+                      </div>
+                      <div className="truncate text-[10px] text-slate-400" title={row.depName ?? ''}>
+                        {row.depName ?? ''}
+                      </div>
                     </td>
-                    <td className="min-w-[10rem] px-2 py-2 text-slate-700">
-                      <div className="text-sm">{row.doctorName ?? row.doctor ?? '—'}</div>
-                      <div className="text-[10px] text-slate-400">{row.depName ?? '—'}</div>
-                    </td>
-                    <td className="px-2 py-2">
-                      <span className="text-[11px] text-slate-700">
+
+                    {/* สถานะนัด */}
+                    <td className="px-1.5 py-1.5">
+                      <span
+                        className="truncate block text-[10px] text-slate-700"
+                        title={row.oappStatusName ?? ''}
+                      >
                         {row.oappStatusName ?? `#${row.oappStatusId ?? '—'}`}
                       </span>
                     </td>
-                    <td className="px-2 py-2">
-                      <AppointmentStatusBadge status={row.callStatus} />
-                    </td>
-                    <td className="px-2 py-2">
+
+                    {/* มาแล้ว */}
+                    <td className="px-1.5 py-1.5">
                       {visited ? (
-                        <span className="inline-flex items-center gap-1 text-xs text-emerald-700">
-                          <CheckCircle2 className="h-3 w-3" />
-                          {row.visitStatus}
+                        <span className="inline-flex items-center gap-0.5 text-[10px] text-emerald-700">
+                          <CheckCircle2 className="h-3 w-3 shrink-0" />
+                          มาแล้ว
                         </span>
                       ) : (
-                        <span className="text-xs text-slate-400">ยังไม่มา</span>
+                        <span className="text-[10px] text-slate-400">ยังไม่มา</span>
                       )}
                     </td>
-                    <td className="px-2 py-2 text-[11px]">
-                      {row.mpConfirmDatetime ? (
-                        <div className="text-emerald-700">
-                          ✓ {formatDateTimeShort(row.mpConfirmDatetime)}
-                        </div>
-                      ) : row.mpSendStatus ? (
-                        <div className="text-slate-600">📤 {row.mpSendStatus}</div>
-                      ) : (
-                        <div className="text-slate-400">—</div>
-                      )}
+
+                    {/* หมายเหตุ */}
+                    <td className="px-1.5 py-1.5">
+                      <span
+                        className="truncate block text-[10px] text-slate-600"
+                        title={row.note ?? ''}
+                      >
+                        {row.note ?? '—'}
+                      </span>
                     </td>
-                    <td className="px-2 py-2">
-                      <div className="flex flex-col gap-0.5 text-[10px]">
-                        {row.labListText && (
-                          <span className="inline-flex items-center gap-1 text-blue-700">
-                            <FlaskConical className="h-2.5 w-2.5" />
-                            <span className="truncate max-w-[10rem]" title={row.labListText}>
-                              {row.labListText}
-                            </span>
-                          </span>
-                        )}
-                        {row.xrayListText && (
-                          <span className="inline-flex items-center gap-1 text-violet-700">
-                            <Scan className="h-2.5 w-2.5" />
-                            <span className="truncate max-w-[10rem]" title={row.xrayListText}>
-                              {row.xrayListText}
-                            </span>
-                          </span>
-                        )}
-                        {!row.labListText && !row.xrayListText && (
-                          <span className="text-slate-400">—</span>
-                        )}
-                      </div>
-                    </td>
-                    <td className="px-2 py-2 text-xs text-slate-600">
-                      {row.appUserName ?? row.appUser ?? '—'}
-                    </td>
-                    <td className="px-2 py-2 text-xs text-slate-600 truncate max-w-[12rem]">
-                      {row.note ?? '—'}
-                    </td>
-                    <td className="px-2 py-2 text-right">
+
+                    {/* detail */}
+                    <td className="px-1.5 py-1.5 text-right">
                       <button
                         type="button"
                         onClick={() => onOpenDetail(row)}
@@ -300,12 +356,74 @@ export function AppointmentTable({
           </tbody>
         </table>
       </div>
+
+      {/* ----------------------------------------------------------- footer */}
       <div className="flex items-center justify-between border-t border-slate-200 bg-slate-50 px-4 py-2 text-xs text-slate-600">
         <span>รวม {rows.length} รายการ</span>
         <span>
           เลือกแล้ว <span className="font-semibold text-slate-900">{selectedIds.size}</span> รายการ
         </span>
       </div>
+
+      {/* ----------------------------------------------------------- right-click context menu */}
+      {ctxMenu && (
+        <>
+          <style>{`
+            .appt-ctx-menu {
+              position: fixed;
+              top: var(--ctx-y);
+              left: var(--ctx-x);
+              z-index: 9999;
+            }
+          `}</style>
+          <div
+            ref={ctxRef}
+            className="appt-ctx-menu min-w-[170px] overflow-hidden rounded-lg border border-slate-200 bg-white py-1 shadow-xl"
+            /* CSS custom props carry the dynamic coords; actual positioning is in the style block above */
+            {...({ style: { '--ctx-x': `${ctxMenu.x}px`, '--ctx-y': `${ctxMenu.y}px` } } as React.HTMLAttributes<HTMLDivElement>)}
+          >
+            <div className="border-b border-slate-100 px-3 py-1.5">
+              <p className="truncate text-[10px] font-semibold text-slate-500 uppercase tracking-wide">
+                {ctxMenu.row.patientName || 'ผู้ป่วย'}
+              </p>
+              <p className="text-[10px] text-slate-400">{ctxMenu.row.hn}</p>
+            </div>
+            <button
+              type="button"
+              className="flex w-full items-center gap-2 px-3 py-2 text-xs text-slate-700 hover:bg-slate-50"
+              onClick={() => { onOpenDetail(ctxMenu.row); setCtxMenu(null); }}
+            >
+              <FileText className="h-3.5 w-3.5 text-slate-400" />
+              ดูรายละเอียด
+            </button>
+            <button
+              type="button"
+              className="flex w-full items-center gap-2 px-3 py-2 text-xs text-slate-700 hover:bg-slate-50"
+              onClick={() => {
+                onToggleSelect(ctxMenu.row.oappId, !selectedIds.has(ctxMenu.row.oappId));
+                setCtxMenu(null);
+              }}
+            >
+              {/* visual-only tick box — not a form element, avoids nested-interactive warning */}
+              <span
+                aria-hidden="true"
+                className={`inline-flex h-3 w-3 shrink-0 items-center justify-center rounded border ${
+                  selectedIds.has(ctxMenu.row.oappId)
+                    ? 'border-blue-500 bg-blue-500 text-white'
+                    : 'border-slate-300 bg-white'
+                }`}
+              >
+                {selectedIds.has(ctxMenu.row.oappId) && (
+                  <svg viewBox="0 0 8 8" className="h-2 w-2 fill-current">
+                    <path d="M1.5 4L3.5 6L6.5 2" stroke="currentColor" strokeWidth="1.5" fill="none" strokeLinecap="round"/>
+                  </svg>
+                )}
+              </span>
+              {selectedIds.has(ctxMenu.row.oappId) ? 'ยกเลิกการเลือก' : 'เลือกรายการนี้'}
+            </button>
+          </div>
+        </>
+      )}
     </div>
   );
 }

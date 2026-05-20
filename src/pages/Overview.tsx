@@ -16,6 +16,8 @@ import {
 import { getAllCallAttempts, subscribeCallAttempts } from '@/services/callAttempts';
 import { getAllUrgentCallbacks, subscribeUrgentCallbacks } from '@/services/urgentCallbacks';
 import { useBmsSessionContext } from '@/contexts/BmsSessionContext';
+import { AnimatedMedIcon } from '@/components/ui/AnimatedMedIcon';
+import { Hospital, PawPrint } from 'lucide-react';
 import type { CallStatus } from '@/types/appointment';
 
 // ---------------------------------------------------------------------------
@@ -224,7 +226,15 @@ export default function Overview() {
 
       {/* ── Header ──────────────────────────────────────────────────────── */}
       <header className="pt-4 flex items-start justify-between gap-4 flex-wrap">
-        <div>
+        <div className="flex items-start gap-4">
+          <AnimatedMedIcon
+            hospitalIcon={Hospital}
+            vetIcon={PawPrint}
+            animation="heartbeat"
+            color="text-blue-500"
+            size="lg"
+          />
+          <div>
           <div className="inline-flex items-center gap-1.5 rounded-full bg-blue-50 px-3 py-1 text-xs font-medium text-blue-700 mb-2">
             <Activity className="h-3 w-3" />
             AI ผู้ช่วยพยาบาล • หมอพร้อม
@@ -236,6 +246,7 @@ export default function Overview() {
             สวัสดี <span className="font-medium text-slate-700">{userName}</span>
             {' — '}{formatThaiDate()}
           </p>
+          </div>
         </div>
         <Link
           to="/appointments"

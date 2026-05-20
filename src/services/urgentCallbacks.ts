@@ -77,6 +77,8 @@ export interface CreateUrgentCallbackInput {
   reason: string;
   priority: UrgentCallbackPriority;
   ward: string;
+  assignedNurse?: string;
+  note?: string;
 }
 
 export function createUrgentCallback(input: CreateUrgentCallbackInput): UrgentCallbackRequest {
@@ -90,6 +92,8 @@ export function createUrgentCallback(input: CreateUrgentCallbackInput): UrgentCa
     reason: input.reason.trim(),
     priority: input.priority,
     ward: input.ward.trim(),
+    assignedNurse: input.assignedNurse?.trim() || undefined,
+    note: input.note?.trim() || undefined,
     status: 'pending',
     createdAt: now,
     updatedAt: now,

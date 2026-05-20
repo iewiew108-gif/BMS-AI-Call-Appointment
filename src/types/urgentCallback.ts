@@ -26,6 +26,10 @@ export interface UrgentCallbackRequest {
   createdAt: string;
   /** เวลาอัปเดตล่าสุด (ISO 8601) */
   updatedAt: string;
+  /** พยาบาลที่ได้รับมอบหมาย (เลือกตอนสร้างเรื่อง) */
+  assignedNurse?: string;
+  /** หมายเหตุเพิ่มเติม (แยกจาก reason) */
+  note?: string;
   /** ชื่อพยาบาลที่รับเรื่อง */
   resolvedBy?: string;
   /** หมายเหตุ / ผลการติดต่อ */

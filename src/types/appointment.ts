@@ -41,6 +41,8 @@ export interface Appointment {
 
   /** Display patient name (`pname` + `fname` + `lname`). */
   patientName: string;
+  /** Patient nickname from `patient.nickname`. */
+  nickname: string | null;
   /** Thai 13-digit national ID — primary identifier for MorPhrom delivery. */
   cid: string | null;
   sex: PatientSex | null;

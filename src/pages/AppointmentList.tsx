@@ -3,8 +3,9 @@
 // and bulk dialog for the AI confirm-call workflow.
 // =============================================================================
 
-import { useCallback, useMemo, useState } from 'react';
-import { PhoneCall, ListChecks, Sparkles } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { PhoneCall, ListChecks, Sparkles, ChevronDown, ChevronUp, BarChart2, HeartPulse, Cat } from 'lucide-react';
+import { AnimatedMedIcon } from '@/components/ui/AnimatedMedIcon';
 import { Button } from '@/components/ui/button';
 import { AppointmentKpiCards } from '@/components/appointments/AppointmentKpiCards';
 import { AppointmentFilterBar } from '@/components/appointments/AppointmentFilterBar';
@@ -52,6 +53,14 @@ export default function AppointmentList() {
   const [bulkOpen, setBulkOpen] = useState(false);
   const [isSending, setIsSending] = useState(false);
   const [jitsiSession, setJitsiSession] = useState<JitsiCallSession | null>(null);
+
+  // KPI auto-hide: show for 5 s on mount then collapse
+  const [kpiVisible, setKpiVisible] = useState(true);
+  const autoHideRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    autoHideRef.current = setTimeout(() => setKpiVisible(false), 5000);
+    return () => { if (autoHideRef.current) clearTimeout(autoHideRef.current); };
+  }, []);
 
   // ------------------------------------------------------------------ select
   const toggleSelect = useCallback((id: number, selected: boolean) => {
@@ -251,11 +260,20 @@ export default function AppointmentList() {
     : 'รอข้อมูล...';
 
   return (
-    <div className="mx-auto max-w-screen-2xl space-y-6 px-2 pb-12 sm:px-4">
+    <div className="w-full space-y-6 px-2 pb-12 sm:px-3">
       {/* Hero */}
       <header className="space-y-3">
         <div className="flex flex-wrap items-end justify-between gap-3">
-          <div>
+          <div className="flex items-start gap-4">
+            <AnimatedMedIcon
+              hospitalIcon={HeartPulse}
+              vetIcon={Cat}
+              animation="float"
+              color="text-rose-400"
+              size="md"
+              className="mt-1 shrink-0"
+            />
+            <div>
             <div className="inline-flex items-center gap-1.5 rounded-full bg-blue-50 px-3 py-1 text-xs font-medium text-blue-700">
               <Sparkles className="h-3 w-3" />
               AI ผู้ช่วยพยาบาล • หมอพร้อม
@@ -266,13 +284,51 @@ export default function AppointmentList() {
             <p className="mt-1 text-sm text-slate-600">
               ดึงรายการจาก HOSxP <span className="font-mono">oapp</span> ทุกประเภทนัด และส่งคิวให้ AI โทรผ่านหมอพร้อม
             </p>
+            </div>
           </div>
           <div className="text-xs text-slate-500">{lastUpdate}</div>
         </div>
       </header>
 
-      {/* KPI */}
-      <AppointmentKpiCards kpis={kpis} />
+      {/* KPI — collapsible, auto-hides after 5 s */}
+      <div>
+        {kpiVisible ? (
+          <div className="space-y-2">
+            <AppointmentKpiCards kpis={kpis} />
+            <div className="flex justify-end">
+              <button
+                type="button"
+                onClick={() => {
+                  if (autoHideRef.current) clearTimeout(autoHideRef.current);
+                  setKpiVisible(false);
+                }}
+                className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-3 py-1 text-xs text-slate-500 shadow-sm hover:bg-slate-50 hover:text-slate-700 transition"
+              >
+                <ChevronUp className="h-3 w-3" />
+                ซ่อนสรุปยอด
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white px-4 py-2 shadow-sm">
+            <BarChart2 className="h-4 w-4 shrink-0 text-slate-400" />
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-600">
+              <span>นัดทั้งหมด <strong className="text-slate-900">{kpis.total}</strong></span>
+              <span>โทรแล้ว <strong className="text-amber-700">{kpis.attempted}</strong></span>
+              <span>ยืนยัน <strong className="text-emerald-700">{kpis.confirmed}</strong></span>
+              <span>Escalate <strong className="text-rose-700">{kpis.escalated}</strong></span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setKpiVisible(true)}
+              className="ml-auto inline-flex items-center gap-1 rounded-full border border-slate-200 px-3 py-1 text-xs text-slate-500 hover:bg-slate-50 hover:text-slate-700 transition"
+            >
+              <ChevronDown className="h-3 w-3" />
+              แสดงสรุปยอด
+            </button>
+          </div>
+        )}
+      </div>
 
       {/* Filter */}
       <AppointmentFilterBar

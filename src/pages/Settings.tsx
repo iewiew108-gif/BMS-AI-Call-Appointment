@@ -3,7 +3,8 @@
 // =============================================================================
 
 import { useSyncExternalStore, useCallback, useState } from 'react';
-import { Settings2, Bell, RotateCcw, Check } from 'lucide-react';
+import { Bell, RotateCcw, Check, Stethoscope, Bird } from 'lucide-react';
+import { AnimatedMedIcon } from '@/components/ui/AnimatedMedIcon';
 import { Button } from '@/components/ui/button';
 import {
   getAppSettings,
@@ -377,8 +378,14 @@ export default function Settings() {
       {/* Page header */}
       <header className="space-y-1">
         <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Settings2 className="h-5 w-5 text-slate-600" />
+          <div className="flex items-center gap-3">
+            <AnimatedMedIcon
+              hospitalIcon={Stethoscope}
+              vetIcon={Bird}
+              animation="spin-slow"
+              color="text-slate-500"
+              size="sm"
+            />
             <h1 className="text-2xl font-semibold tracking-tight text-slate-900">ตั้งค่า</h1>
           </div>
 
