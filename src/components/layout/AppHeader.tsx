@@ -3,6 +3,7 @@
 // Refined professional navigation with modern aesthetics
 // =============================================================================
 
+import { useSyncExternalStore } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { useBmsSessionContext } from '@/contexts/BmsSessionContext';
 import {
@@ -12,8 +13,10 @@ import {
   Database,
   ChevronDown,
   PhoneCall,
+  BellRing,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
+import { subscribeUrgentCallbacks, getPendingCount } from '@/services/urgentCallbacks';
 
 // ---------------------------------------------------------------------------
 // Navigation tab definitions
@@ -23,11 +26,13 @@ interface NavTab {
   label: string;
   path: string;
   icon: LucideIcon;
+  badge?: () => number;
 }
 
 const NAV_TABS: NavTab[] = [
   { label: 'หน้าหลัก', path: '/', icon: LayoutDashboard },
   { label: 'AI โทรยืนยันนัด', path: '/appointments', icon: PhoneCall },
+  { label: 'แจ้งพยาบาลด่วน', path: '/urgent-callback', icon: BellRing, badge: getPendingCount },
 ];
 
 // ---------------------------------------------------------------------------
@@ -37,6 +42,9 @@ const NAV_TABS: NavTab[] = [
 export function AppHeader() {
   const { session, disconnectSession } = useBmsSessionContext();
   const location = useLocation();
+
+  // Subscribe to urgent callbacks for live badge count
+  const urgentPending = useSyncExternalStore(subscribeUrgentCallbacks, getPendingCount);
 
   const databaseLabel =
     session?.databaseType === 'postgresql' ? 'PostgreSQL' : 'MySQL';
@@ -73,14 +81,20 @@ export function AppHeader() {
                 : location.pathname.startsWith(tab.path);
 
             const Icon = tab.icon;
+            const badgeCount = tab.path === '/urgent-callback' ? urgentPending : 0;
 
             return (
               <Link
                 key={tab.path}
                 to={tab.path}
-                className={`nav-tab ${isActive ? 'nav-tab-active' : ''}`}
+                className={`nav-tab ${isActive ? 'nav-tab-active' : ''} ${tab.path === '/urgent-callback' ? 'nav-tab-urgent' : ''}`}
               >
-                <Icon className="h-4 w-4" />
+                <span className="nav-tab-icon-wrap">
+                  <Icon className="h-4 w-4" />
+                  {badgeCount > 0 && (
+                    <span className="nav-badge">{badgeCount > 9 ? '9+' : badgeCount}</span>
+                  )}
+                </span>
                 <span>{tab.label}</span>
                 {isActive && <span className="nav-tab-indicator" />}
               </Link>
@@ -124,7 +138,7 @@ export function AppHeader() {
               </div>
 
               {/* Disconnect */}
-              <button onClick={disconnectSession} className="disconnect-btn">
+              <button type="button" onClick={disconnectSession} className="disconnect-btn">
                 <LogOut className="h-4 w-4" />
                 <span>ออกจากระบบ</span>
               </button>
@@ -223,6 +237,52 @@ export function AppHeader() {
         .nav-tab-active {
           color: white;
           background: rgba(255, 255, 255, 0.1);
+        }
+
+        .nav-tab-urgent {
+          color: rgba(252, 165, 165, 0.7);
+        }
+
+        .nav-tab-urgent:hover {
+          color: rgba(252, 165, 165, 1);
+          background: rgba(239, 68, 68, 0.1);
+        }
+
+        .nav-tab-urgent.nav-tab-active {
+          color: #fca5a5;
+          background: rgba(239, 68, 68, 0.15);
+        }
+
+        .nav-tab-icon-wrap {
+          position: relative;
+          display: flex;
+          align-items: center;
+        }
+
+        .nav-badge {
+          position: absolute;
+          top: -7px;
+          right: -8px;
+          min-width: 16px;
+          height: 16px;
+          padding: 0 4px;
+          background: #ef4444;
+          border-radius: 999px;
+          font-size: 0.625rem;
+          font-weight: 700;
+          color: white;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          line-height: 1;
+          box-shadow: 0 0 0 2px #1e293b;
+          animation: badgePop 0.3s ease;
+        }
+
+        @keyframes badgePop {
+          0% { transform: scale(0); }
+          70% { transform: scale(1.2); }
+          100% { transform: scale(1); }
         }
 
         .nav-tab-indicator {

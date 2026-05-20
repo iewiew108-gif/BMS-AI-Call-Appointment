@@ -12,7 +12,9 @@ import { AppointmentTable } from '@/components/appointments/AppointmentTable';
 import { AppointmentDetailDrawer } from '@/components/appointments/AppointmentDetailDrawer';
 import { BulkCallQueueDialog } from '@/components/appointments/BulkCallQueueDialog';
 import { JitsiCallModal, type JitsiCallSession } from '@/components/appointments/JitsiCallModal';
+import { RetrySchedulerBar } from '@/components/appointments/RetrySchedulerBar';
 import { useAppointments, type EnrichedAppointment } from '@/hooks/useAppointments';
+import { useRetryScheduler } from '@/hooks/useRetryScheduler';
 import { upsertCallAttempt } from '@/services/callAttempts';
 import { enqueueConfirmCall, sendMorPhromConfirmInvite } from '@/services/aidx';
 import { notifyError, notifySuccess, notifyWarning } from '@/services/notify';
@@ -229,6 +231,17 @@ export default function AppointmentList() {
     [],
   );
 
+  // ------------------------------------------------------------------ retry scheduler
+  const retryHandler = useCallback(async (oappId: number) => {
+    const row = rows.find((r) => r.oappId === oappId);
+    if (!row) return;
+    notifyWarning(`โทรซ้ำอัตโนมัติ (30 นาที): ${row.patientName}`);
+    await sendOne(row);
+  }, [rows, sendOne]);
+
+  const { scheduledRetries, enabled: retryEnabled, setEnabled: setRetryEnabled, countdown } =
+    useRetryScheduler({ onRetry: retryHandler });
+
   // ------------------------------------------------------------------ render
   const lastUpdate = executionTimeMs != null
     ? `อัปเดตเมื่อ ${new Date().toLocaleTimeString('th-TH')} (${executionTimeMs} ms)`
@@ -265,6 +278,14 @@ export default function AppointmentList() {
         resetFilter={resetFilter}
         onRefresh={() => void refetch()}
         isLoading={isLoading}
+      />
+
+      {/* Retry scheduler status bar */}
+      <RetrySchedulerBar
+        scheduledRetries={scheduledRetries}
+        enabled={retryEnabled}
+        onSetEnabled={setRetryEnabled}
+        countdown={countdown}
       />
 
       {/* Action bar */}
