@@ -66,8 +66,11 @@ export function AppHeader() {
             <Activity className="h-5 w-5" />
           </div>
           <div className="brand-text">
-            <h1 className="brand-title">Template App</h1>
-            <span className="brand-subtitle">BMS Session</span>
+            <div className="brand-title-row">
+              <h1 className="brand-title">Template App</h1>
+              <span className="demo-badge">DEMO</span>
+            </div>
+            <span className="brand-subtitle">BMS Session · สำหรับ Demo เท่านั้น</span>
           </div>
         </div>
 
@@ -204,6 +207,12 @@ export function AppHeader() {
           flex-direction: column;
         }
 
+        .brand-title-row {
+          display: flex;
+          align-items: center;
+          gap: 0.5rem;
+        }
+
         .brand-title {
           font-size: 0.9375rem;
           font-weight: 600;
@@ -211,6 +220,25 @@ export function AppHeader() {
           margin: 0;
           line-height: 1.2;
           letter-spacing: -0.01em;
+        }
+
+        .demo-badge {
+          display: inline-flex;
+          align-items: center;
+          padding: 0.1rem 0.45rem;
+          border-radius: 0.3rem;
+          font-size: 0.6rem;
+          font-weight: 700;
+          letter-spacing: 0.08em;
+          color: #fde68a;
+          background: rgba(251, 191, 36, 0.18);
+          border: 1px solid rgba(251, 191, 36, 0.4);
+          animation: demoPulse 3s ease-in-out infinite;
+        }
+
+        @keyframes demoPulse {
+          0%, 100% { opacity: 1; }
+          50%       { opacity: 0.6; }
         }
 
         .brand-subtitle {
