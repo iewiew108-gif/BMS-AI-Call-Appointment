@@ -26,6 +26,7 @@ import {
   Syringe,
   ClipboardPlus,
   ClipboardList,
+  Scissors,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { subscribeUrgentCallbacks, getPendingCount } from '@/services/urgentCallbacks';
@@ -46,6 +47,7 @@ const NAV_TABS_HOSPITAL: NavTab[] = [
   { label: 'หน้าหลัก', path: '/', icon: LayoutDashboard },
   { label: 'AI โทรยืนยันนัด', path: '/appointments', icon: PhoneCall },
   { label: 'แจ้งพยาบาลด่วน', path: '/urgent-callback', icon: BellRing, badge: getPendingCount },
+  { label: 'ติดตามหลังผ่าตัด', path: '/post-op-calls', icon: Scissors },
   { label: 'สรุปยอดการโทร', path: '/nurse-call-log', icon: ClipboardList },
 ];
 
@@ -53,6 +55,7 @@ const NAV_TABS_VET: NavTab[] = [
   { label: 'หน้าหลัก', path: '/', icon: PawPrint },
   { label: 'AI โทรยืนยันนัด', path: '/appointments', icon: Stethoscope },
   { label: 'แจ้งสัตวแพทย์ด่วน', path: '/urgent-callback', icon: BellRing, badge: getPendingCount },
+  { label: 'ติดตามหลังผ่าตัด', path: '/post-op-calls', icon: Scissors },
   { label: 'สรุปยอดการโทร', path: '/nurse-call-log', icon: ClipboardList },
 ];
 
