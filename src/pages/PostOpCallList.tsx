@@ -3,7 +3,7 @@
 // ค้นหาจาก HOSxP (an_stat + iptoprt) บันทึกการโทรใน localStorage
 // =============================================================================
 
-import React, { useCallback, useMemo, useState, useSyncExternalStore } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { AnimatedMedIcon } from '@/components/ui/AnimatedMedIcon';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -11,11 +11,14 @@ import { Input } from '@/components/ui/input';
 import {
   Scissors, PawPrint,
   Search, Phone, CheckCircle2, XCircle, PhoneOff, CalendarCheck,
-  Clock, Loader2, AlertTriangle, ChevronDown, ChevronUp, User,
-  Trash2, History,
+  Clock, Loader2, AlertTriangle, User,
+  Trash2, History, CalendarDays, CalendarPlus, CheckCheck, AlertCircle,
+  Settings2, X, Plus, Pencil, Save, ExternalLink, BotMessageSquare,
+  Flag, MessageSquare, ChevronDown, ChevronUp, ThumbsUp, AlertOctagon,
 } from 'lucide-react';
 import { usePostOpPatients } from '@/hooks/usePostOpPatients';
 import { useNurseOptions } from '@/hooks/useNurseOptions';
+import { useBmsSessionContext } from '@/contexts/BmsSessionContext';
 import {
   getAllPostOpCallEntries,
   subscribePostOpCallLog,
@@ -24,8 +27,39 @@ import {
   getCallEntriesForAn,
   getLatestCallResultForAn,
 } from '@/services/postOpCallLog';
+import {
+  getAllPostOpAiCallRecords,
+  subscribePostOpAiCalls,
+  getPostOpAiCallsForAn,
+  getActiveAiCallForAn,
+  getLatestAiCallForAn,
+  createPostOpAiCallRecord,
+  updatePostOpAiCallStatus,
+  appendPostOpAiTranscript,
+  deletePostOpAiCallRecord,
+  setNurseFlag,
+} from '@/services/postOpAiCalls';
+import type { PostOpAiCallRecord, PostOpAiCallStatus, PostOpNurseFlag } from '@/services/postOpAiCalls';
+import { enqueuePostOpCall, subscribeCaseEvents } from '@/services/aidx';
+import {
+  getTemplates,
+  subscribeTemplates,
+  getAllSchedules,
+  subscribeSchedules,
+  getSchedulesForAn,
+  getNextDueSchedule,
+  getOverdueSchedules,
+  applyTemplateToPatients,
+  addManualSchedule,
+  completeSchedule,
+  deleteSchedule,
+  clearSchedulesForAn,
+  saveTemplate,
+  deleteTemplate,
+} from '@/services/followUpSchedule';
 import type { PostOpCallResult } from '@/types/postOpCall';
 import type { PostOpFilter } from '@/hooks/usePostOpPatients';
+import type { FollowUpTemplate } from '@/types/followUpSchedule';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -68,6 +102,96 @@ const CALL_RESULT_CONFIG: Record<PostOpCallResult, {
   refused:          { label: 'ปฏิเสธ',           color: 'text-red-700',    bg: 'bg-red-50',    border: 'border-red-200',    icon: <XCircle className="h-3 w-3" />,      variant: 'destructive' },
   appointment_made: { label: 'นัดหมายแล้ว',      color: 'text-blue-700',   bg: 'bg-blue-50',   border: 'border-blue-200',   icon: <CalendarCheck className="h-3 w-3" />, variant: 'default'    },
 };
+
+const AI_STATUS_CONFIG: Record<PostOpAiCallStatus, {
+  label: string; color: string; bg: string; border: string;
+}> = {
+  queued:    { label: 'รอโทร',          color: 'text-amber-700',  bg: 'bg-amber-50',  border: 'border-amber-200'  },
+  calling:   { label: 'กำลังโทร',       color: 'text-blue-700',   bg: 'bg-blue-50',   border: 'border-blue-200'   },
+  confirmed: { label: 'ยืนยันแล้ว',     color: 'text-green-700',  bg: 'bg-green-50',  border: 'border-green-200'  },
+  no_answer: { label: 'ไม่รับสาย',      color: 'text-orange-700', bg: 'bg-orange-50', border: 'border-orange-200' },
+  escalated: { label: 'ส่งต่อพยาบาล',   color: 'text-purple-700', bg: 'bg-purple-50', border: 'border-purple-200' },
+  cancelled: { label: 'ยกเลิก',         color: 'text-red-700',    bg: 'bg-red-50',    border: 'border-red-200'    },
+  error:     { label: 'เกิดข้อผิดพลาด', color: 'text-red-700',    bg: 'bg-red-50',    border: 'border-red-200'    },
+  ended:     { label: 'สิ้นสุด',        color: 'text-slate-600',  bg: 'bg-slate-100', border: 'border-slate-200'  },
+};
+
+const NURSE_FLAG_CONFIG: Record<PostOpNurseFlag, {
+  label: string; color: string; bg: string; border: string; icon: React.ReactNode;
+}> = {
+  normal:         { label: 'ปกติ',             color: 'text-green-700',  bg: 'bg-green-50',  border: 'border-green-300',  icon: <ThumbsUp className="h-3 w-3" />        },
+  abnormal:       { label: 'มีอาการผิดปกติ',  color: 'text-red-700',    bg: 'bg-red-50',    border: 'border-red-300',    icon: <AlertOctagon className="h-3 w-3" />    },
+  needs_followup: { label: 'ต้องติดตามเพิ่ม', color: 'text-orange-700', bg: 'bg-orange-50', border: 'border-orange-300', icon: <Flag className="h-3 w-3" />            },
+  booked_doctor:  { label: 'นัดพบแพทย์',      color: 'text-blue-700',   bg: 'bg-blue-50',   border: 'border-blue-300',   icon: <CalendarCheck className="h-3 w-3" />   },
+};
+
+// ---------------------------------------------------------------------------
+// LiveCaptionBar — shows real-time current utterance during active call
+// ---------------------------------------------------------------------------
+
+interface LiveCaption {
+  id: string;
+  speaker: string;
+  text: string;
+}
+
+function LiveCaptionBar({ caption }: { caption: LiveCaption | null }) {
+  if (!caption) return null;
+  const isAi = caption.speaker === 'AI' || /^ai$/i.test(caption.speaker);
+  return (
+    <div className="flex items-center gap-2.5 rounded-lg border border-blue-900/30 bg-slate-900/90 px-3 py-2.5 shadow-md">
+      <span className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-bold tracking-wide ${
+        isAi ? 'bg-blue-500 text-white' : 'bg-green-600 text-white'
+      }`}>
+        {isAi ? '🤖 AI' : '🙋 ผู้ป่วย'}
+      </span>
+      <span className="flex-1 text-sm text-white/90 font-medium leading-snug">{caption.text}</span>
+      <span className="flex gap-0.5 shrink-0">
+        <span className="h-1.5 w-1.5 rounded-full bg-blue-400 animate-bounce [animation-delay:0ms]" />
+        <span className="h-1.5 w-1.5 rounded-full bg-blue-400 animate-bounce [animation-delay:150ms]" />
+        <span className="h-1.5 w-1.5 rounded-full bg-blue-400 animate-bounce [animation-delay:300ms]" />
+      </span>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// TranscriptView — renders AI call transcript lines with speaker styling
+// ---------------------------------------------------------------------------
+
+function TranscriptView({ lines, maxHeight = 'max-h-48' }: { lines: string[]; maxHeight?: string }) {
+  const bottomRef = React.useRef<HTMLDivElement>(null);
+  React.useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [lines.length]);
+
+  if (lines.length === 0) return (
+    <p className="text-[10px] text-slate-400 italic px-3 py-2">ยังไม่มีบทสนทนา</p>
+  );
+
+  return (
+    <div className={`${maxHeight} overflow-y-auto rounded-lg border border-slate-200 bg-white divide-y divide-slate-50 text-xs`}>
+      {lines.map((line, i) => {
+        const isAi      = /^AI:/i.test(line) || /^ผู้ช่วย:/i.test(line);
+        const isPatient = /^ผู้ป่วย:/i.test(line) || /^patient:/i.test(line);
+        const colonIdx  = line.indexOf(':');
+        const speaker   = colonIdx > 0 && colonIdx < 15 ? line.slice(0, colonIdx) : null;
+        const body      = speaker ? line.slice(colonIdx + 1).trim() : line;
+        return (
+          <div key={i} className={`px-3 py-1.5 ${isAi ? 'bg-blue-50/60' : isPatient ? 'bg-green-50/60' : ''}`}>
+            {speaker && (
+              <span className={`font-semibold mr-1 ${isAi ? 'text-blue-700' : isPatient ? 'text-green-700' : 'text-slate-500'}`}>
+                {speaker}:
+              </span>
+            )}
+            <span className="text-slate-700">{body}</span>
+          </div>
+        );
+      })}
+      <div ref={bottomRef} />
+    </div>
+  );
+}
 
 // ---------------------------------------------------------------------------
 // Inline call log form (expanded under a row)
@@ -153,13 +277,183 @@ function CallLogForm({ an, hn, patientName, nurseOptions, onClose }: CallLogForm
 }
 
 // ---------------------------------------------------------------------------
+// Template Manager Modal
+// ---------------------------------------------------------------------------
+
+interface TemplateManagerModalProps {
+  templates: import('@/types/followUpSchedule').FollowUpTemplate[];
+  onClose: () => void;
+}
+
+function TemplateManagerModal({ templates, onClose }: TemplateManagerModalProps) {
+  const [editId,    setEditId]    = useState<string | null>(null);
+  const [editName,  setEditName]  = useState('');
+  const [editDays,  setEditDays]  = useState('');  // comma-separated
+  const [newName,   setNewName]   = useState('');
+  const [newDays,   setNewDays]   = useState('');
+
+  const parseDays = (str: string): number[] =>
+    str.split(',').map((s) => parseInt(s.trim(), 10)).filter((n) => !isNaN(n) && n > 0);
+
+  const handleStartEdit = (t: import('@/types/followUpSchedule').FollowUpTemplate) => {
+    setEditId(t.id);
+    setEditName(t.name);
+    setEditDays(t.days.join(', '));
+  };
+
+  const handleSaveEdit = () => {
+    if (!editId || !editName.trim()) return;
+    const days = parseDays(editDays);
+    if (days.length === 0) return;
+    saveTemplate({ id: editId, name: editName.trim(), days: days.sort((a, b) => a - b) });
+    setEditId(null);
+  };
+
+  const handleAdd = () => {
+    if (!newName.trim()) return;
+    const days = parseDays(newDays);
+    if (days.length === 0) return;
+    const id = `tmpl_${Date.now()}`;
+    saveTemplate({ id, name: newName.trim(), days: days.sort((a, b) => a - b) });
+    setNewName('');
+    setNewDays('');
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
+      <div className="w-full max-w-lg mx-4 rounded-xl bg-white shadow-2xl overflow-hidden">
+        {/* Header */}
+        <div className="flex items-center justify-between px-5 py-4 border-b border-slate-200 bg-indigo-50">
+          <div className="flex items-center gap-2">
+            <CalendarDays className="h-4 w-4 text-indigo-600" />
+            <h2 className="text-sm font-semibold text-indigo-800">จัดการ Template นัดติดตาม</h2>
+          </div>
+          <button type="button" title="ปิด" aria-label="ปิด" onClick={onClose} className="text-slate-400 hover:text-slate-600 transition">
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        <div className="px-5 py-4 space-y-4 max-h-[70vh] overflow-y-auto">
+          {/* Template list */}
+          <div className="space-y-2">
+            {templates.map((t) => (
+              <div key={t.id} className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5">
+                {editId === t.id ? (
+                  <div className="space-y-2">
+                    <input
+                      type="text"
+                      value={editName}
+                      onChange={(e) => setEditName(e.target.value)}
+                      placeholder="ชื่อ Template"
+                      className="w-full rounded border border-indigo-300 bg-white px-2.5 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-400"
+                    />
+                    <div>
+                      <input
+                        type="text"
+                        value={editDays}
+                        onChange={(e) => setEditDays(e.target.value)}
+                        placeholder="วันที่ติดตาม เช่น 1, 3, 7, 14, 30"
+                        className="w-full rounded border border-indigo-300 bg-white px-2.5 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-400"
+                      />
+                      <p className="mt-0.5 text-[10px] text-slate-400">ใส่จำนวนวันหลังผ่าตัด คั่นด้วยจุลภาค</p>
+                    </div>
+                    <div className="flex gap-2">
+                      <Button size="sm" className="gap-1 h-7 text-xs bg-indigo-600 hover:bg-indigo-700" onClick={handleSaveEdit}>
+                        <Save className="h-3 w-3" />บันทึก
+                      </Button>
+                      <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => setEditId(null)}>ยกเลิก</Button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium text-slate-800">{t.name}</p>
+                      <div className="flex flex-wrap gap-1 mt-1">
+                        {t.days.map((d) => (
+                          <span key={d} className="inline-flex items-center rounded-full bg-indigo-100 px-2 py-0.5 text-[10px] font-medium text-indigo-700">
+                            วัน {d}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                    <div className="flex gap-1 shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => handleStartEdit(t)}
+                        className="rounded border border-slate-200 bg-white p-1 text-slate-400 hover:text-indigo-600 hover:border-indigo-300 transition"
+                        title="แก้ไข"
+                      >
+                        <Pencil className="h-3.5 w-3.5" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => deleteTemplate(t.id)}
+                        className="rounded border border-slate-200 bg-white p-1 text-slate-400 hover:text-red-500 hover:border-red-200 transition"
+                        title="ลบ"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+
+          {/* Add new template */}
+          <div className="rounded-lg border border-dashed border-indigo-300 bg-indigo-50/50 px-4 py-3 space-y-2">
+            <p className="flex items-center gap-1 text-xs font-semibold text-indigo-700">
+              <Plus className="h-3.5 w-3.5" />เพิ่ม Template ใหม่
+            </p>
+            <input
+              type="text"
+              value={newName}
+              onChange={(e) => setNewName(e.target.value)}
+              placeholder="ชื่อ Template เช่น หัตถการพิเศษ"
+              className="w-full rounded border border-slate-300 bg-white px-2.5 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-400 placeholder:text-slate-400"
+            />
+            <div>
+              <input
+                type="text"
+                value={newDays}
+                onChange={(e) => setNewDays(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && handleAdd()}
+                placeholder="วันที่ติดตาม เช่น 1, 3, 7, 14, 30"
+                className="w-full rounded border border-slate-300 bg-white px-2.5 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-400 placeholder:text-slate-400"
+              />
+              <p className="mt-0.5 text-[10px] text-slate-400">จำนวนวันหลังผ่าตัด คั่นด้วยจุลภาค เช่น 1, 3, 7, 14, 30</p>
+            </div>
+            <Button
+              size="sm"
+              disabled={!newName.trim() || !newDays.trim()}
+              onClick={handleAdd}
+              className="gap-1 h-8 text-xs bg-indigo-600 hover:bg-indigo-700"
+            >
+              <Plus className="h-3.5 w-3.5" />เพิ่ม Template
+            </Button>
+          </div>
+        </div>
+
+        <div className="px-5 py-3 border-t border-slate-200 bg-slate-50 flex justify-end">
+          <Button size="sm" variant="outline" onClick={onClose} className="text-xs">ปิด</Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Page
 // ---------------------------------------------------------------------------
 
 export default function PostOpCallList() {
-  // Subscribe to call log store for live updates
+  // Subscribe to stores for live updates
   useSyncExternalStore(subscribePostOpCallLog, getAllPostOpCallEntries);
+  useSyncExternalStore(subscribeSchedules, getAllSchedules);
+  useSyncExternalStore(subscribePostOpAiCalls, getAllPostOpAiCallRecords);
+  const templates = useSyncExternalStore(subscribeTemplates, getTemplates);
 
+  const { session } = useBmsSessionContext();
   const { options: nurseOptions } = useNurseOptions();
 
   // Filter state
@@ -169,10 +463,29 @@ export default function PostOpCallList() {
   const [icd9Filter, setIcd9Filter] = useState('');
   const [activeFilter, setActiveFilter] = useState<PostOpFilter | null>(null);
 
+  // Template state
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string>(() => templates[0]?.id ?? '');
+  const selectedTemplate = useMemo<FollowUpTemplate | null>(
+    () => templates.find((t) => t.id === selectedTemplateId) ?? templates[0] ?? null,
+    [templates, selectedTemplateId],
+  );
+
   // UI state
-  const [expandedAn, setExpandedAn]   = useState<string | null>(null); // call log form
-  const [historyAn,  setHistoryAn]    = useState<string | null>(null); // history expand
-  const [searchText, setSearchText]   = useState('');
+  const [expandedAn,  setExpandedAn]  = useState<string | null>(null); // call log form
+  const [historyAn,   setHistoryAn]   = useState<string | null>(null); // history expand
+  const [scheduleAn,  setScheduleAn]  = useState<string | null>(null); // schedule panel
+  const [searchText,  setSearchText]  = useState('');
+  const [manualDate,  setManualDate]  = useState(todayISO());
+  const [manualLabel, setManualLabel] = useState('');
+  const [completeBy,  setCompleteBy]  = useState('');
+  const [showTemplateManager, setShowTemplateManager] = useState(false);
+  const [aiPanelAn,    setAiPanelAn]    = useState<string | null>(null);
+  const [aiCallLoading, setAiCallLoading] = useState<string | null>(null);
+  const [aiCallError,  setAiCallError]  = useState<string | null>(null);
+  const [transcriptExpandId, setTranscriptExpandId] = useState<string | null>(null);
+  const [flagNotes, setFlagNotes] = useState<Record<string, string>>({});
+  const [liveCaption, setLiveCaption] = useState<LiveCaption | null>(null);
+  const sseUnsub = useRef<(() => void) | null>(null);
 
   const { rows, isLoading, error } = usePostOpPatients(activeFilter);
 
@@ -180,6 +493,7 @@ export default function PostOpCallList() {
     setActiveFilter({ startDate, endDate, doctorCode: doctorCode || undefined, icd9Filter: icd9Filter || undefined });
     setExpandedAn(null);
     setHistoryAn(null);
+    setScheduleAn(null);
   };
 
   const handleClear = () => {
@@ -190,7 +504,16 @@ export default function PostOpCallList() {
     setActiveFilter(null);
     setExpandedAn(null);
     setHistoryAn(null);
+    setScheduleAn(null);
     setSearchText('');
+  };
+
+  const handleApplyTemplate = () => {
+    if (!selectedTemplate || rows.length === 0) return;
+    applyTemplateToPatients(
+      rows.map((r) => ({ an: r.an, hn: r.hn, opDate: r.opDate })),
+      selectedTemplate,
+    );
   };
 
   const filteredRows = useMemo(() => {
@@ -228,18 +551,111 @@ export default function PostOpCallList() {
   const handleToggleCallForm = useCallback((an: string) => {
     setExpandedAn((prev) => prev === an ? null : an);
     setHistoryAn(null);
+    setScheduleAn(null);
   }, []);
 
   const handleToggleHistory = useCallback((an: string) => {
     setHistoryAn((prev) => prev === an ? null : an);
     setExpandedAn(null);
+    setScheduleAn(null);
   }, []);
+
+  const handleToggleSchedule = useCallback((an: string) => {
+    setScheduleAn((prev) => prev === an ? null : an);
+    setExpandedAn(null);
+    setHistoryAn(null);
+    setAiPanelAn(null);
+    setManualDate(todayISO());
+    setManualLabel('');
+  }, []);
+
+  const handleToggleAiPanel = useCallback((an: string) => {
+    setAiPanelAn((prev) => prev === an ? null : an);
+    setExpandedAn(null);
+    setHistoryAn(null);
+    setScheduleAn(null);
+    setAiCallError(null);
+  }, []);
+
+  const handleStartAiCall = useCallback(async (
+    an: string, hn: string, patientName: string,
+    opDate: string, icd9Name: string | null, doctorName: string | null,
+    contactPhone: string | null, cid: string | null,
+  ) => {
+    setAiCallLoading(an);
+    setAiCallError(null);
+    try {
+      const result = await enqueuePostOpCall({
+        an, hn, patientName, opDate,
+        icd9Name,
+        doctorName,
+        contactPhone,
+        cid: cid ?? undefined,
+        hospcode: session?.userInfo?.hospitalCode ?? undefined,
+      });
+      const rec = createPostOpAiCallRecord(an, hn, patientName, result);
+      const TERMINAL_STATUSES = new Set(['confirmed','no_answer','escalated','cancelled','error','ended']);
+      // Subscribe to SSE for live status + transcript + live caption
+      sseUnsub.current?.();
+      sseUnsub.current = subscribeCaseEvents(result.caseId, {
+        onStatus: (status) => {
+          updatePostOpAiCallStatus(rec.id, status as PostOpAiCallStatus);
+          if (TERMINAL_STATUSES.has(status)) setLiveCaption(null);
+        },
+        onTranscript: (chunk) => {
+          appendPostOpAiTranscript(rec.id, chunk);
+          setLiveCaption(null);
+        },
+        onCaption: (speaker, text) => setLiveCaption({ id: rec.id, speaker, text }),
+        onError: () => {
+          updatePostOpAiCallStatus(rec.id, 'error');
+          setLiveCaption(null);
+        },
+        onClose: () => setLiveCaption(null),
+      });
+      // Open nurse observer URL in new tab if available
+      if (result.joinUrl) window.open(result.joinUrl, '_blank', 'noopener,noreferrer');
+    } catch (err) {
+      setAiCallError(err instanceof Error ? err.message : 'ไม่สามารถเริ่มการโทรได้');
+    } finally {
+      setAiCallLoading(null);
+    }
+  }, []);
+
+  // Re-subscribe to SSE when panel switches to a different AN that already has an active call
+  useEffect(() => {
+    if (!aiPanelAn) return;
+    const active = getActiveAiCallForAn(aiPanelAn);
+    if (!active) return;
+    const TERMINAL_STATUSES = new Set(['confirmed','no_answer','escalated','cancelled','error','ended']);
+    sseUnsub.current?.();
+    sseUnsub.current = subscribeCaseEvents(active.caseId, {
+      onStatus: (status) => {
+        updatePostOpAiCallStatus(active.id, status as PostOpAiCallStatus);
+        if (TERMINAL_STATUSES.has(status)) setLiveCaption(null);
+      },
+      onTranscript: (chunk) => {
+        appendPostOpAiTranscript(active.id, chunk);
+        setLiveCaption(null);
+      },
+      onCaption: (speaker, text) => setLiveCaption({ id: active.id, speaker, text }),
+      onError: () => {
+        updatePostOpAiCallStatus(active.id, 'error');
+        setLiveCaption(null);
+      },
+      onClose: () => setLiveCaption(null),
+    });
+  }, [aiPanelAn]);
+
+  // Cleanup SSE on unmount
+  useEffect(() => () => { sseUnsub.current?.(); }, []);
 
   // ---------------------------------------------------------------------------
   // Render
   // ---------------------------------------------------------------------------
 
   return (
+    <>
     <div className="flex h-full min-h-0 pb-12">
 
       {/* ── Left Filter Sidebar ───────────────────────────────────── */}
@@ -325,7 +741,7 @@ export default function PostOpCallList() {
           {/* KPI mini */}
           {rows.length > 0 && (
             <div className="pt-2 border-t border-slate-200 space-y-1.5">
-              <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-wide">สรุป</p>
+              <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-wide">สรุปโทร</p>
               {([
                 { label: 'พบทั้งหมด',    value: kpi.total,           color: 'text-violet-700' },
                 { label: 'ยังไม่โทร',    value: kpi.notCalled,       color: 'text-slate-500'  },
@@ -341,6 +757,53 @@ export default function PostOpCallList() {
               ))}
             </div>
           )}
+
+          {/* Template selector */}
+          <div className="pt-2 border-t border-slate-200 space-y-2">
+            <div className="flex items-center justify-between">
+              <p className="flex items-center gap-1 text-[10px] font-semibold text-indigo-700 uppercase tracking-wide">
+                <CalendarDays className="h-3 w-3" />เทมเพลตติดตาม
+              </p>
+              <button
+                type="button"
+                title="จัดการ Template"
+                aria-label="จัดการ Template"
+                onClick={() => setShowTemplateManager(true)}
+                className="rounded p-0.5 text-indigo-400 hover:text-indigo-700 hover:bg-indigo-100 transition"
+              >
+                <Settings2 className="h-3.5 w-3.5" />
+              </button>
+            </div>
+            <select
+              title="เลือกเทมเพลต"
+              value={selectedTemplateId}
+              onChange={(e) => setSelectedTemplateId(e.target.value)}
+              className="w-full rounded border border-slate-300 bg-white px-2 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-indigo-300"
+            >
+              {templates.map((t) => (
+                <option key={t.id} value={t.id}>{t.name}</option>
+              ))}
+            </select>
+            {selectedTemplate && (
+              <div className="flex flex-wrap gap-1">
+                {selectedTemplate.days.map((d) => (
+                  <span key={d} className="inline-flex items-center rounded-full bg-indigo-50 border border-indigo-200 px-1.5 py-0.5 text-[10px] text-indigo-700">
+                    วัน {d}
+                  </span>
+                ))}
+              </div>
+            )}
+            <Button
+              size="sm"
+              disabled={rows.length === 0 || !selectedTemplate}
+              onClick={handleApplyTemplate}
+              className="w-full h-7 text-[10px] gap-1 bg-indigo-600 hover:bg-indigo-700"
+            >
+              <CalendarPlus className="h-3 w-3" />
+              ใช้กับผลลัพธ์ทั้งหมด
+            </Button>
+            <p className="text-[9px] text-slate-400 leading-tight">สร้างตารางนัดติดตามอัตโนมัติจากวันผ่าตัด (ข้ามรายที่มีอยู่แล้ว)</p>
+          </div>
         </div>
       </aside>
 
@@ -408,12 +871,12 @@ export default function PostOpCallList() {
                       <tr>
                         <th className="px-3 py-2.5 text-center w-8">#</th>
                         <th className="px-3 py-2.5 text-left">วันผ่าตัด</th>
-                        <th className="px-3 py-2.5 text-left">AN</th>
                         <th className="px-3 py-2.5 text-left">HN</th>
                         <th className="px-3 py-2.5 text-left">ชื่อผู้ป่วย</th>
                         <th className="px-3 py-2.5 text-left">เบอร์โทร</th>
                         <th className="px-3 py-2.5 text-left">การผ่าตัด (ICD-9)</th>
-                        <th className="px-3 py-2.5 text-left">แพทย์ผู้ผ่าตัด</th>
+                        <th className="px-3 py-2.5 text-left">แพทย์</th>
+                        <th className="px-3 py-2.5 text-left">นัดติดตาม</th>
                         <th className="px-3 py-2.5 text-left">สถานะโทร</th>
                         <th className="px-3 py-2.5 text-right"><span className="sr-only">จัดการ</span></th>
                       </tr>
@@ -423,52 +886,105 @@ export default function PostOpCallList() {
                         const latestResult = getLatestCallResultForAn(row.an);
                         const callCount    = getCallEntriesForAn(row.an).length;
                         const cfg          = latestResult ? CALL_RESULT_CONFIG[latestResult] : null;
-                        const isFormOpen   = expandedAn === row.an;
-                        const isHistOpen   = historyAn  === row.an;
+                        const isFormOpen   = expandedAn  === row.an;
+                        const isHistOpen   = historyAn   === row.an;
+                        const isSchedOpen  = scheduleAn  === row.an;
+                        const isAiOpen     = aiPanelAn   === row.an;
                         const phone        = bestPhone(row.homeTel, row.mobileTel, row.informTel);
+                        const nextDue      = getNextDueSchedule(row.an);
+                        const overdue      = getOverdueSchedules(row.an);
+                        const schedCount   = getSchedulesForAn(row.an).length;
+                        const today        = todayISO();
+                        const activeAiCall = getActiveAiCallForAn(row.an);
+                        const latestAiCall = getLatestAiCallForAn(row.an);
+                        const aiCallHistory = getPostOpAiCallsForAn(row.an);
+                        const isStartingAi  = aiCallLoading === row.an;
 
                         return (
                           <React.Fragment key={row.an}>
-                            <tr className={`transition ${isFormOpen ? 'bg-green-50/40' : isHistOpen ? 'bg-blue-50/30' : 'hover:bg-slate-50'}`}>
+                            <tr className={`transition ${isFormOpen ? 'bg-green-50/40' : isSchedOpen ? 'bg-indigo-50/30' : isAiOpen ? 'bg-blue-50/30' : isHistOpen ? 'bg-slate-50/50' : 'hover:bg-slate-50'}`}>
                               <td className="px-3 py-2.5 text-center text-slate-400 font-mono">{idx + 1}</td>
                               <td className="px-3 py-2.5 text-slate-600 whitespace-nowrap">{formatDateTH(row.opDate)}</td>
-                              <td className="px-3 py-2.5 font-mono text-slate-500 text-[10px]">{row.an}</td>
                               <td className="px-3 py-2.5 font-mono text-slate-500">{row.hn}</td>
-                              <td className="px-3 py-2.5 font-medium text-slate-800 max-w-[150px] truncate">{row.patientName}</td>
+                              <td className="px-3 py-2.5 font-medium text-slate-800 max-w-[140px] truncate">{row.patientName}</td>
                               <td className="px-3 py-2.5">
                                 <span className="flex items-center gap-1 font-mono text-slate-700">
-                                  <Phone className="h-3 w-3 text-slate-400 shrink-0" />
-                                  {phone}
+                                  <Phone className="h-3 w-3 text-slate-400 shrink-0" />{phone}
                                 </span>
-                                {row.homeTel && row.mobileTel && (
-                                  <span className="block text-[10px] text-slate-400 font-mono mt-0.5">บ้าน: {row.homeTel}</span>
-                                )}
                               </td>
-                              <td className="px-3 py-2.5 max-w-[180px]">
+                              <td className="px-3 py-2.5 max-w-[160px]">
                                 <span className="font-mono text-violet-600">{row.icd9Code}</span>
                                 {row.icd9Name && (
                                   <span className="block text-slate-500 truncate" title={row.icd9Name}>{row.icd9Name}</span>
                                 )}
                               </td>
-                              <td className="px-3 py-2.5 text-slate-600 max-w-[120px] truncate">{row.doctorName ?? '—'}</td>
-                              <td className="px-3 py-2.5">
-                                {cfg ? (
-                                  <div className="space-y-0.5">
+                              <td className="px-3 py-2.5 text-slate-600 max-w-[110px] truncate">{row.doctorName ?? '—'}</td>
+
+                              {/* ── Schedule cell ── */}
+                              <td className="px-3 py-2.5 min-w-[100px]">
+                                {overdue.length > 0 ? (
+                                  <span className="inline-flex items-center gap-1 rounded-full bg-red-50 border border-red-200 px-2 py-0.5 text-[10px] text-red-700 font-medium">
+                                    <AlertCircle className="h-3 w-3" />เกิน {overdue.length} รายการ
+                                  </span>
+                                ) : nextDue ? (
+                                  <span className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-medium ${
+                                    nextDue.dueDate === today
+                                      ? 'bg-amber-50 border-amber-200 text-amber-700'
+                                      : 'bg-indigo-50 border-indigo-200 text-indigo-700'
+                                  }`}>
+                                    <CalendarDays className="h-3 w-3" />
+                                    วันที่ {nextDue.dayOffset > 0 ? nextDue.dayOffset : '?'}: {formatDateTH(nextDue.dueDate)}
+                                  </span>
+                                ) : schedCount > 0 ? (
+                                  <span className="inline-flex items-center gap-1 rounded-full bg-green-50 border border-green-200 px-2 py-0.5 text-[10px] text-green-700">
+                                    <CheckCheck className="h-3 w-3" />ครบแล้ว
+                                  </span>
+                                ) : (
+                                  <span className="text-[10px] text-slate-300">—</span>
+                                )}
+                              </td>
+
+                              <td className="px-3 py-2.5 min-w-[120px]">
+                                <div className="space-y-0.5">
+                                  {latestAiCall ? (
+                                    <>
+                                      <span className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-medium ${AI_STATUS_CONFIG[latestAiCall.status].bg} ${AI_STATUS_CONFIG[latestAiCall.status].border} ${AI_STATUS_CONFIG[latestAiCall.status].color} ${latestAiCall.status === 'calling' ? 'animate-pulse' : ''}`}>
+                                        <BotMessageSquare className="h-3 w-3" />{AI_STATUS_CONFIG[latestAiCall.status].label}
+                                      </span>
+                                      {latestAiCall.nurseFlag && (
+                                        <span className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-medium ${NURSE_FLAG_CONFIG[latestAiCall.nurseFlag].bg} ${NURSE_FLAG_CONFIG[latestAiCall.nurseFlag].border} ${NURSE_FLAG_CONFIG[latestAiCall.nurseFlag].color}`}>
+                                          {NURSE_FLAG_CONFIG[latestAiCall.nurseFlag].icon}{NURSE_FLAG_CONFIG[latestAiCall.nurseFlag].label}
+                                        </span>
+                                      )}
+                                    </>
+                                  ) : cfg ? (
                                     <Badge variant={cfg.variant} className="flex items-center gap-1 text-[10px] w-fit whitespace-nowrap">
                                       {cfg.icon}{cfg.label}
                                     </Badge>
-                                    {callCount > 1 && (
-                                      <span className="text-[10px] text-slate-400">{callCount} ครั้ง</span>
-                                    )}
-                                  </div>
-                                ) : (
-                                  <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-[10px] text-slate-500">
-                                    <Clock className="h-3 w-3" />ยังไม่โทร
-                                  </span>
-                                )}
+                                  ) : (
+                                    <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-[10px] text-slate-500">
+                                      <Clock className="h-3 w-3" />ยังไม่โทร
+                                    </span>
+                                  )}
+                                </div>
                               </td>
                               <td className="px-3 py-2.5 text-right">
                                 <div className="flex items-center justify-end gap-1 flex-nowrap">
+                                  {/* AI Call button */}
+                                  <button
+                                    type="button"
+                                    onClick={() => handleToggleAiPanel(row.an)}
+                                    className={`inline-flex items-center gap-1 rounded border px-2 py-1 text-[10px] font-medium transition whitespace-nowrap ${
+                                      isAiOpen
+                                        ? 'border-blue-400 bg-blue-100 text-blue-700'
+                                        : activeAiCall
+                                        ? 'border-blue-400 bg-blue-50 text-blue-700 animate-pulse'
+                                        : 'border-blue-200 bg-blue-50 text-blue-600 hover:bg-blue-100'
+                                    }`}
+                                  >
+                                    <BotMessageSquare className="h-3 w-3" />
+                                    AI โทร{aiCallHistory.length > 0 ? ` (${aiCallHistory.length})` : ''}
+                                  </button>
                                   <button
                                     type="button"
                                     onClick={() => handleToggleCallForm(row.an)}
@@ -479,7 +995,19 @@ export default function PostOpCallList() {
                                     }`}
                                   >
                                     <Phone className="h-3 w-3" />
-                                    {isFormOpen ? 'ปิด' : 'บันทึกโทร'}
+                                    {isFormOpen ? 'ปิด' : 'โทร'}
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleToggleSchedule(row.an)}
+                                    className={`inline-flex items-center gap-1 rounded border px-2 py-1 text-[10px] font-medium transition whitespace-nowrap ${
+                                      isSchedOpen
+                                        ? 'border-indigo-400 bg-indigo-100 text-indigo-700'
+                                        : 'border-indigo-200 bg-indigo-50 text-indigo-600 hover:bg-indigo-100'
+                                    }`}
+                                  >
+                                    <CalendarDays className="h-3 w-3" />
+                                    นัด{schedCount > 0 ? ` (${schedCount})` : ''}
                                   </button>
                                   {callCount > 0 && (
                                     <button
@@ -493,12 +1021,203 @@ export default function PostOpCallList() {
                                     >
                                       <History className="h-3 w-3" />
                                       {callCount}
-                                      {isHistOpen ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
                                     </button>
                                   )}
                                 </div>
                               </td>
                             </tr>
+
+                            {/* Inline AI call panel */}
+                            {isAiOpen && (
+                              <tr>
+                                <td colSpan={10} className="bg-blue-50/40 border-t border-blue-100 p-0">
+                                  <div className="px-4 py-3 space-y-3">
+                                    {/* Header */}
+                                    <div className="flex items-center justify-between">
+                                      <p className="text-[10px] font-semibold text-blue-700 uppercase tracking-wide flex items-center gap-1">
+                                        <BotMessageSquare className="h-3.5 w-3.5" />AI โทรติดตามหลังผ่าตัด — {row.patientName}
+                                      </p>
+                                      {!activeAiCall && (
+                                        <Button
+                                          size="sm"
+                                          disabled={isStartingAi}
+                                          onClick={() => handleStartAiCall(
+                                            row.an, row.hn, row.patientName,
+                                            row.opDate, row.icd9Name, row.doctorName,
+                                            bestPhone(row.homeTel, row.mobileTel, row.informTel),
+                                            row.cid,
+                                          )}
+                                          className="gap-1.5 h-7 text-[10px] bg-blue-600 hover:bg-blue-700"
+                                        >
+                                          {isStartingAi
+                                            ? <><Loader2 className="h-3 w-3 animate-spin" />กำลังเริ่ม...</>
+                                            : <><BotMessageSquare className="h-3 w-3" />เริ่ม AI โทร</>
+                                          }
+                                        </Button>
+                                      )}
+                                    </div>
+
+                                    {aiCallError && (
+                                      <p className="flex items-center gap-1 text-xs text-red-600">
+                                        <AlertCircle className="h-3.5 w-3.5 shrink-0" />{aiCallError}
+                                      </p>
+                                    )}
+
+                                    {/* Active call — status bar + live caption + transcript */}
+                                    {activeAiCall && (
+                                      <div className="space-y-2">
+                                        {/* Status bar */}
+                                        <div className="flex flex-wrap items-center gap-2 rounded-lg border border-blue-300 bg-blue-50 px-3 py-2">
+                                          <span className={`inline-flex items-center gap-1 text-xs font-semibold ${AI_STATUS_CONFIG[activeAiCall.status].color}`}>
+                                            <span className="h-2 w-2 rounded-full bg-blue-500 animate-pulse" />
+                                            {AI_STATUS_CONFIG[activeAiCall.status].label}
+                                          </span>
+                                          {activeAiCall.joinUrl && (
+                                            <a href={activeAiCall.joinUrl} target="_blank" rel="noopener noreferrer"
+                                              className="inline-flex items-center gap-1 rounded border border-blue-400 bg-white px-2 py-1 text-[10px] text-blue-700 hover:bg-blue-50 transition">
+                                              <ExternalLink className="h-3 w-3" />เข้าร่วม (พยาบาล)
+                                            </a>
+                                          )}
+                                          <Button size="sm" variant="destructive" className="h-6 gap-1 text-[10px] ml-auto"
+                                            onClick={() => { updatePostOpAiCallStatus(activeAiCall.id, 'cancelled'); setLiveCaption(null); }}>
+                                            <PhoneOff className="h-3 w-3" />ยกเลิก
+                                          </Button>
+                                        </div>
+
+                                        {/* Live Caption */}
+                                        {liveCaption?.id === activeAiCall.id && (
+                                          <div className="space-y-1">
+                                            <p className="text-[10px] font-semibold text-slate-500 flex items-center gap-1">
+                                              <span className="h-2 w-2 rounded-full bg-green-500 animate-pulse" />
+                                              Live Caption
+                                            </p>
+                                            <LiveCaptionBar caption={liveCaption} />
+                                          </div>
+                                        )}
+
+                                        {/* Transcript */}
+                                        <div className="space-y-1">
+                                          <p className="text-[10px] font-semibold text-slate-500 flex items-center gap-1">
+                                            <MessageSquare className="h-3 w-3" />Transcript (สด)
+                                          </p>
+                                          <TranscriptView lines={activeAiCall.transcript} maxHeight="max-h-40" />
+                                        </div>
+                                      </div>
+                                    )}
+
+                                    {/* Call history */}
+                                    {aiCallHistory.length > 0 && (
+                                      <div className="space-y-2">
+                                        <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-wide">
+                                          ประวัติ AI โทร ({aiCallHistory.length})
+                                        </p>
+                                        {aiCallHistory
+                                          .sort((a: PostOpAiCallRecord, b: PostOpAiCallRecord) => b.startedAt.localeCompare(a.startedAt))
+                                          .map((rec: PostOpAiCallRecord) => {
+                                            const sCfg = AI_STATUS_CONFIG[rec.status];
+                                            const fCfg = rec.nurseFlag ? NURSE_FLAG_CONFIG[rec.nurseFlag] : null;
+                                            const isEnded = !['queued','calling'].includes(rec.status);
+                                            const transcriptOpen = transcriptExpandId === rec.id;
+                                            const noteVal = flagNotes[rec.id] ?? rec.nurseFlagNote ?? '';
+                                            return (
+                                              <div key={rec.id} className="rounded-lg border border-slate-200 bg-white overflow-hidden">
+                                                {/* Card header */}
+                                                <div className="flex items-center gap-2 px-3 py-2 bg-slate-50">
+                                                  <BotMessageSquare className={`h-3 w-3 shrink-0 ${sCfg.color}`} />
+                                                  <span className="text-[10px] text-slate-500 whitespace-nowrap">
+                                                    {new Date(rec.startedAt).toLocaleString('th-TH', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                                                  </span>
+                                                  <span className={`inline-flex items-center gap-0.5 rounded-full border px-1.5 py-0.5 text-[10px] font-medium ${sCfg.bg} ${sCfg.border} ${sCfg.color}`}>
+                                                    {sCfg.label}
+                                                  </span>
+                                                  {fCfg && (
+                                                    <span className={`inline-flex items-center gap-0.5 rounded-full border px-1.5 py-0.5 text-[10px] font-medium ${fCfg.bg} ${fCfg.border} ${fCfg.color}`}>
+                                                      {fCfg.icon}{fCfg.label}
+                                                    </span>
+                                                  )}
+                                                  <div className="ml-auto flex items-center gap-1 shrink-0">
+                                                    {rec.transcript.length > 0 && (
+                                                      <button type="button"
+                                                        onClick={() => setTranscriptExpandId(transcriptOpen ? null : rec.id)}
+                                                        className="inline-flex items-center gap-0.5 rounded border border-slate-200 bg-white px-1.5 py-0.5 text-[10px] text-slate-500 hover:text-blue-600 hover:border-blue-300 transition">
+                                                        <MessageSquare className="h-3 w-3" />
+                                                        บทสนทนา {rec.transcript.length} บรรทัด
+                                                        {transcriptOpen ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+                                                      </button>
+                                                    )}
+                                                    {rec.joinUrl && (
+                                                      <a href={rec.joinUrl} target="_blank" rel="noopener noreferrer"
+                                                        className="text-slate-400 hover:text-blue-600 transition" title="เข้าร่วม">
+                                                        <ExternalLink className="h-3.5 w-3.5" />
+                                                      </a>
+                                                    )}
+                                                    <button type="button" onClick={() => deletePostOpAiCallRecord(rec.id)}
+                                                      className="text-slate-300 hover:text-red-400 transition" title="ลบ">
+                                                      <Trash2 className="h-3.5 w-3.5" />
+                                                    </button>
+                                                  </div>
+                                                </div>
+
+                                                {/* Transcript expand */}
+                                                {transcriptOpen && (
+                                                  <div className="px-3 pb-2 pt-1 border-t border-slate-100">
+                                                    <TranscriptView lines={rec.transcript} maxHeight="max-h-56" />
+                                                  </div>
+                                                )}
+
+                                                {/* Nurse flag section — shown when call has ended */}
+                                                {isEnded && (
+                                                  <div className="px-3 py-2 border-t border-slate-100 bg-slate-50/50 space-y-2">
+                                                    <p className="text-[10px] font-semibold text-slate-600 flex items-center gap-1">
+                                                      <Flag className="h-3 w-3 text-slate-400" />ประเมินผลการโทร
+                                                    </p>
+                                                    <div className="flex flex-wrap gap-1.5">
+                                                      {(Object.keys(NURSE_FLAG_CONFIG) as PostOpNurseFlag[]).map((f) => {
+                                                        const fc = NURSE_FLAG_CONFIG[f];
+                                                        const selected = rec.nurseFlag === f;
+                                                        return (
+                                                          <button key={f} type="button"
+                                                            onClick={() => setNurseFlag(rec.id, selected ? null : f, noteVal || undefined)}
+                                                            className={`inline-flex items-center gap-1 rounded-lg border px-2.5 py-1 text-[10px] font-medium transition ${
+                                                              selected
+                                                                ? `${fc.bg} ${fc.border} ${fc.color} shadow-sm`
+                                                                : 'border-slate-200 bg-white text-slate-500 hover:border-slate-300'
+                                                            }`}
+                                                          >
+                                                            {fc.icon}{fc.label}
+                                                          </button>
+                                                        );
+                                                      })}
+                                                    </div>
+                                                    <div className="flex gap-2 items-center">
+                                                      <input
+                                                        type="text"
+                                                        placeholder="บันทึกเพิ่มเติม..."
+                                                        value={noteVal}
+                                                        onChange={(e) => setFlagNotes((prev) => ({ ...prev, [rec.id]: e.target.value }))}
+                                                        className="flex-1 rounded border border-slate-300 bg-white px-2.5 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-blue-300 placeholder:text-slate-400"
+                                                      />
+                                                      {noteVal !== (rec.nurseFlagNote ?? '') && (
+                                                        <Button size="sm" className="h-7 text-[10px] gap-1 bg-blue-600 hover:bg-blue-700"
+                                                          onClick={() => {
+                                                            setNurseFlag(rec.id, rec.nurseFlag ?? null, noteVal);
+                                                            setFlagNotes((prev) => { const n = { ...prev }; delete n[rec.id]; return n; });
+                                                          }}>
+                                                          <Save className="h-3 w-3" />บันทึก
+                                                        </Button>
+                                                      )}
+                                                    </div>
+                                                  </div>
+                                                )}
+                                              </div>
+                                            );
+                                          })}
+                                      </div>
+                                    )}
+                                  </div>
+                                </td>
+                              </tr>
+                            )}
 
                             {/* Inline call log form */}
                             {isFormOpen && (
@@ -511,6 +1230,138 @@ export default function PostOpCallList() {
                                     nurseOptions={nurseOptions}
                                     onClose={() => setExpandedAn(null)}
                                   />
+                                </td>
+                              </tr>
+                            )}
+
+                            {/* Inline schedule panel */}
+                            {isSchedOpen && (
+                              <tr>
+                                <td colSpan={10} className="bg-indigo-50/40 border-t border-indigo-100 p-0">
+                                  <div className="px-4 py-3 space-y-3">
+                                    <div className="flex items-center justify-between">
+                                      <p className="text-[10px] font-semibold text-indigo-700 uppercase tracking-wide flex items-center gap-1">
+                                        <CalendarDays className="h-3.5 w-3.5" />ตารางนัดติดตาม — {row.patientName}
+                                      </p>
+                                      {schedCount > 0 && (
+                                        <button
+                                          type="button"
+                                          onClick={() => clearSchedulesForAn(row.an)}
+                                          className="text-[10px] text-red-400 hover:text-red-600 flex items-center gap-0.5"
+                                        >
+                                          <Trash2 className="h-3 w-3" />ล้างทั้งหมด
+                                        </button>
+                                      )}
+                                    </div>
+
+                                    {/* Schedule list */}
+                                    {getSchedulesForAn(row.an).length === 0 ? (
+                                      <p className="text-xs text-slate-400 italic">ยังไม่มีตารางนัด — ใช้ปุ่ม "ใช้กับผลลัพธ์ทั้งหมด" หรือเพิ่ม Manual ด้านล่าง</p>
+                                    ) : (
+                                      <div className="space-y-1">
+                                        {getSchedulesForAn(row.an)
+                                          .sort((a, b) => a.dueDate.localeCompare(b.dueDate))
+                                          .map((s) => (
+                                            <div key={s.id} className={`flex items-center justify-between gap-3 rounded-lg border px-3 py-1.5 ${
+                                              s.completedAt
+                                                ? 'bg-green-50 border-green-200'
+                                                : s.dueDate < today
+                                                ? 'bg-red-50 border-red-200'
+                                                : s.dueDate === today
+                                                ? 'bg-amber-50 border-amber-200'
+                                                : 'bg-white border-slate-200'
+                                            }`}>
+                                              <div className="flex items-center gap-2 min-w-0">
+                                                {s.completedAt ? (
+                                                  <CheckCheck className="h-3.5 w-3.5 text-green-600 shrink-0" />
+                                                ) : s.dueDate < today ? (
+                                                  <AlertCircle className="h-3.5 w-3.5 text-red-500 shrink-0" />
+                                                ) : (
+                                                  <CalendarDays className="h-3.5 w-3.5 text-indigo-400 shrink-0" />
+                                                )}
+                                                <span className="text-xs font-medium text-slate-700 whitespace-nowrap">
+                                                  {s.dayOffset > 0 ? `วันที่ ${s.dayOffset}` : s.label ?? 'Manual'}
+                                                </span>
+                                                <span className="text-xs text-slate-500">{formatDateTH(s.dueDate)}</span>
+                                                {s.completedAt && (
+                                                  <span className="text-[10px] text-green-600 flex items-center gap-0.5">
+                                                    <User className="h-3 w-3" />{s.completedBy ?? ''}
+                                                  </span>
+                                                )}
+                                              </div>
+                                              <div className="flex items-center gap-1 shrink-0">
+                                                {!s.completedAt && (
+                                                  <button
+                                                    type="button"
+                                                    onClick={() => completeSchedule(s.id, completeBy || 'พยาบาล')}
+                                                    className="inline-flex items-center gap-0.5 rounded border border-green-300 bg-green-50 px-1.5 py-0.5 text-[10px] text-green-700 hover:bg-green-100 transition"
+                                                  >
+                                                    <CheckCircle2 className="h-3 w-3" />ติดต่อแล้ว
+                                                  </button>
+                                                )}
+                                                <button
+                                                  type="button"
+                                                  onClick={() => deleteSchedule(s.id)}
+                                                  className="text-slate-300 hover:text-red-400 transition"
+                                                  title="ลบ"
+                                                >
+                                                  <Trash2 className="h-3 w-3" />
+                                                </button>
+                                              </div>
+                                            </div>
+                                          ))}
+                                      </div>
+                                    )}
+
+                                    {/* Add manual */}
+                                    <div className="flex flex-wrap items-end gap-2 pt-1 border-t border-indigo-100">
+                                      <div className="space-y-0.5">
+                                        <label className="block text-[10px] text-slate-500">วันที่ (Manual)</label>
+                                        <input
+                                          type="date"
+                                          title="วันนัดติดตาม"
+                                          aria-label="วันนัดติดตาม"
+                                          value={manualDate}
+                                          onChange={(e) => setManualDate(e.target.value)}
+                                          className="rounded border border-slate-300 bg-white px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-indigo-300"
+                                        />
+                                      </div>
+                                      <div className="space-y-0.5">
+                                        <label className="block text-[10px] text-slate-500">หมายเหตุ</label>
+                                        <input
+                                          type="text"
+                                          placeholder="เช่น ตรวจแผล..."
+                                          value={manualLabel}
+                                          onChange={(e) => setManualLabel(e.target.value)}
+                                          className="rounded border border-slate-300 bg-white px-2 py-1 text-xs w-36 focus:outline-none focus:ring-1 focus:ring-indigo-300 placeholder:text-slate-400"
+                                        />
+                                      </div>
+                                      <div className="space-y-0.5">
+                                        <label className="block text-[10px] text-slate-500">ผู้บันทึก</label>
+                                        <select
+                                          title="ผู้บันทึก"
+                                          value={completeBy}
+                                          onChange={(e) => setCompleteBy(e.target.value)}
+                                          className="rounded border border-slate-300 bg-white px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-indigo-300"
+                                        >
+                                          <option value="">— เลือก —</option>
+                                          {nurseOptions.map((n) => (
+                                            <option key={n.code} value={n.name}>{n.name}</option>
+                                          ))}
+                                        </select>
+                                      </div>
+                                      <Button
+                                        size="sm"
+                                        className="h-7 gap-1 text-[10px] bg-indigo-600 hover:bg-indigo-700"
+                                        onClick={() => {
+                                          addManualSchedule(row.an, row.hn, manualDate, manualLabel || undefined);
+                                          setManualLabel('');
+                                        }}
+                                      >
+                                        <CalendarPlus className="h-3 w-3" />เพิ่ม
+                                      </Button>
+                                    </div>
+                                  </div>
                                 </td>
                               </tr>
                             )}
@@ -573,5 +1424,13 @@ export default function PostOpCallList() {
 
       </div>
     </div>
+
+    {showTemplateManager && (
+      <TemplateManagerModal
+        templates={templates}
+        onClose={() => setShowTemplateManager(false)}
+      />
+    )}
+    </>
   );
 }

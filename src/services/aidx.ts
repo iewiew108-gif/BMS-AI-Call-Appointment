@@ -89,6 +89,8 @@ export interface CaseEvent {
 export interface CaseEventHandlers {
   onStatus?: (status: string) => void;
   onTranscript?: (chunk: string) => void;
+  /** Real-time caption from nurse.utterance / patient.intake_update SSE events. */
+  onCaption?: (speaker: string, text: string) => void;
   onEvent?: (event: CaseEvent) => void;
   onError?: (err: Error) => void;
   onClose?: () => void;
@@ -351,6 +353,23 @@ export function subscribeCaseEvents(
     if (typeof payload.text === 'string') handlers.onTranscript(payload.text);
   };
 
+  const onNurseUtterance = (e: MessageEvent): void => {
+    const payload = safeJson(String(e.data ?? ''));
+    if (typeof payload.text === 'string') {
+      handlers.onCaption?.('AI', payload.text);
+      // Also append to transcript for permanent record
+      handlers.onTranscript?.(`AI: ${payload.text}`);
+    }
+  };
+
+  const onPatientUpdate = (e: MessageEvent): void => {
+    const payload = safeJson(String(e.data ?? ''));
+    if (typeof payload.text === 'string') {
+      handlers.onCaption?.('ผู้ป่วย', payload.text);
+      handlers.onTranscript?.(`ผู้ป่วย: ${payload.text}`);
+    }
+  };
+
   const onEvent = (e: MessageEvent): void => {
     if (!handlers.onEvent) return;
     const payload = safeJson(String(e.data ?? ''));
@@ -359,6 +378,8 @@ export function subscribeCaseEvents(
 
   source.addEventListener('status', onStatus as EventListener);
   source.addEventListener('transcript', onTranscript as EventListener);
+  source.addEventListener('nurse.utterance', onNurseUtterance as EventListener);
+  source.addEventListener('patient.intake_update', onPatientUpdate as EventListener);
   source.addEventListener('event', onEvent as EventListener);
 
   if (handlers.onError) {
@@ -370,9 +391,118 @@ export function subscribeCaseEvents(
   return () => {
     source.removeEventListener('status', onStatus as EventListener);
     source.removeEventListener('transcript', onTranscript as EventListener);
+    source.removeEventListener('nurse.utterance', onNurseUtterance as EventListener);
+    source.removeEventListener('patient.intake_update', onPatientUpdate as EventListener);
     source.removeEventListener('event', onEvent as EventListener);
     source.close();
     handlers.onClose?.();
+  };
+}
+
+// ---------------------------------------------------------------------------
+// enqueuePostOpCall — post-op follow-up call (no CID required)
+// ---------------------------------------------------------------------------
+
+export interface EnqueuePostOpCallInput {
+  /** Admission number — used as reference_id prefix "postop-{an}". */
+  an: string;
+  hn: string;
+  patientName: string;
+  opDate: string;
+  icd9Name?: string | null;
+  doctorName?: string | null;
+  contactPhone?: string | null;
+  /** Optional national ID — enables MohPrompt videocall when provided. */
+  cid?: string | null;
+  preferredLang?: 'th' | 'en';
+  hospitalName?: string;
+  hospcode?: string;
+}
+
+/**
+ * Submit a post-op follow-up call to the AIDX engine:
+ *   1. POST /api/v1/dynamic-task/generate
+ *   2. POST /api/v1/dynamic-task/start
+ *
+ * reference_id is set to "postop-{an}".  CID is optional — if provided,
+ * MohPrompt videocall is included; otherwise the session is phone-only.
+ */
+export async function enqueuePostOpCall(
+  input: EnqueuePostOpCallInput,
+  options?: AidxCallOptions,
+): Promise<EnqueueConfirmCallResult> {
+  const referenceId = `postop-${input.an}`;
+  const locale = input.preferredLang ?? 'th';
+
+  const generateBody = {
+    task_prompt:
+      `ติดตามอาการหลังผ่าตัดกับผู้ป่วย ${input.patientName} (HN: ${input.hn}) ` +
+      `ที่ผ่าตัดเมื่อวันที่ ${input.opDate}` +
+      (input.icd9Name ? ` รายการ: ${input.icd9Name}` : '') +
+      (input.doctorName ? ` แพทย์: ${input.doctorName}` : ''),
+    context: {
+      an: input.an,
+      hn: input.hn,
+      patient_name: input.patientName,
+      op_date: input.opDate,
+      icd9_name: input.icd9Name ?? null,
+      doctor_name: input.doctorName ?? null,
+      contact_phone: input.contactPhone ?? null,
+    },
+    locale,
+  };
+
+  const genRes = await aidxFetch(
+    '/api/v1/dynamic-task/generate',
+    { method: 'POST', body: JSON.stringify(generateBody) },
+    options,
+  );
+  if (!genRes.ok) {
+    const text = await genRes.text().catch(() => '');
+    throw new Error(`AIDX generate failed (HTTP ${genRes.status}): ${text.slice(0, 200)}`);
+  }
+  const genParsed = (await genRes.json()) as DynamicTaskGenerateResponse;
+  if (!genParsed.task) throw new Error('AIDX generate returned no task spec');
+
+  const startBody: Record<string, unknown> = {
+    reference_id: referenceId,
+    patient_id: input.hn,
+    locale,
+    task: genParsed.task,
+  };
+
+  if (input.cid) {
+    startBody['cid'] = input.cid;
+    startBody['videocall'] = {
+      provider: 'mohprompt',
+      cid: input.cid,
+      hospital: {
+        hospcode: input.hospcode ?? null,
+        hospital_name: input.hospitalName ?? 'โรงพยาบาล',
+      },
+      clinic_code: '099',
+      clinic_name: 'ติดตามหลังผ่าตัด',
+    };
+  }
+
+  const startRes = await aidxFetch(
+    '/api/v1/dynamic-task/start',
+    { method: 'POST', body: JSON.stringify(startBody) },
+    options,
+  );
+  if (!startRes.ok) {
+    const text = await startRes.text().catch(() => '');
+    throw new Error(`AIDX start failed (HTTP ${startRes.status}): ${text.slice(0, 200)}`);
+  }
+  const startParsed = (await startRes.json()) as DynamicTaskStartResponse;
+
+  return {
+    caseId: startParsed.reference_id ?? referenceId,
+    status: startParsed.status ?? 'queued',
+    joinUrl: startParsed.jitsi_url,
+    patientJitsiUrl: startParsed.patient_jitsi_url,
+    eventsUrl: startParsed.events_url,
+    raw: startParsed,
   };
 }
 

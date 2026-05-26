@@ -22,6 +22,7 @@ export interface PostOpPatientRow {
   hn: string;
   an: string;
   patientName: string;
+  cid: string | null;
   homeTel: string | null;
   mobileTel: string | null;
   informTel: string | null;
