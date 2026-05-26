@@ -471,18 +471,12 @@ export async function enqueuePostOpCall(
     task: genParsed.task,
   };
 
+  // Post-op follow-up is phone-only — do NOT include videocall block.
+  // MohPrompt videocall is only needed for appointment-confirmation flows
+  // (enqueueConfirmCall). Including it here causes 502 because MohPrompt
+  // cannot create a meeting URL for this use-case.
   if (input.cid) {
     startBody['cid'] = input.cid;
-    startBody['videocall'] = {
-      provider: 'mohprompt',
-      cid: input.cid,
-      hospital: {
-        hospcode: input.hospcode ?? null,
-        hospital_name: input.hospitalName ?? 'โรงพยาบาล',
-      },
-      clinic_code: '099',
-      clinic_name: 'ติดตามหลังผ่าตัด',
-    };
   }
 
   const startRes = await aidxFetch(
